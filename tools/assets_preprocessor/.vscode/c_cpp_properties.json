@@ -3,7 +3,10 @@
         {
             "name": "GCC",
             "includePath": [
-                "${workspaceFolder}/**"
+                "${workspaceFolder}/**",
+                "C:/Users/Christian/esp/Super-2024-Swadge-FW/**",
+                "C:/Users/Christian/esp/Super-2024-Swadge-FW/components/hdw-usb/**",
+                "C:/Users/Christian/esp/esp-idf/**"
             ],
             "defines": [],
             "cStandard": "c17",

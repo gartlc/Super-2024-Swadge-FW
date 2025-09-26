@@ -5,7 +5,8 @@
             "includePath": [
                 "${workspaceFolder}/main/**",
                 "${workspaceFolder}/components/**",
-                "${workspaceFolder}/emulator/**"
+                "${workspaceFolder}/emulator/**",
+                "C:/Users/Christian/esp/Super-2024-Swadge-FW/emulator/**"
             ],
             "defines": [
                 "CONFIG_IDF_TARGET_ESP32S2=y",
@@ -62,7 +63,8 @@
                 "${config:idf.espAdfPath}/components/**",
                 "${config:idf.espAdfPathWin}/components/**",
                 "${workspaceFolder}/main/**",
-                "${workspaceFolder}/components/**"
+                "${workspaceFolder}/components/**",
+                "C:/Users/Christian/esp/Super-2024-Swadge-FW/emulator/**"
             ],
             "browse": {
                 "path": [
