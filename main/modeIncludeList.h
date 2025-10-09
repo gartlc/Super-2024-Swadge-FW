@@ -58,6 +58,7 @@
 #include "trophyCase.h"
 #include "trophyTest.h"
 #include "tunernome.h"
+#include "visualizer.h"
 
 //==============================================================================
 // Function Prototypes

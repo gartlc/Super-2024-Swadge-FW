@@ -20,7 +20,7 @@ swadgeMode_t* const allSwadgeModes[]
        &factoryTestMode, &gamepadMode,    &introMode,      &jukeboxMode,        &keebTestMode,       &mainMenuMode,
        &modeCredits,     &modeDiceRoller, &modePicross,    &nameTestMode,       &roboRunnerMode,     &sequencerMode,
        &canvasTestMode,  &swadgedokuMode, &swadgeItMode,   &swadgePassTestMode, &swadgetamatoneMode, &synthMode,
-       &tCaseMode,       &touchTestMode,  &trophyTestMode, &tunernomeMode,      &modeCh32v003test};
+       &tCaseMode,       &touchTestMode,  &trophyTestMode, &tunernomeMode,      &modeCh32v003test,   &visualizerMode};
 
 //==============================================================================
 // Functions
@@ -51,6 +51,7 @@ void modeListSetMenu(menu_t* menu)
     addSingleItemToMenu(menu, jukeboxMode.modeName);
     addSingleItemToMenu(menu, synthMode.modeName);
     addSingleItemToMenu(menu, swadgetamatoneMode.modeName);
+    addSingleItemToMenu(menu, visualizerMode.modeName);
     menu = endSubMenu(menu);
 
     // Utilities sub menu
