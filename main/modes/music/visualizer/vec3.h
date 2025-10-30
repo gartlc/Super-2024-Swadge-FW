@@ -29,22 +29,34 @@
 
 #ifndef _VECTOR_3D_H_
 #define _VECTOR_3D_H_
-#define FRAC_BITS_8 8
 #include <stdint.h>
+#include <stdio.h>
+#include "fixedPTMath.h"
 
+// vec3_t is for storing data in world/pixel coordinates
 typedef struct {
     int16_t x;
     int16_t y;
     int16_t z;
 } vec3_t;
 
-vec3_t vec3_add(vec3_t vecA, vec3_t vecB);
-vec3_t vec3_sub(vec3_t vecA, vec3_t vecB);
-vec3_t vec3_scale(vec3_t vec, int16_t scalar);
+// vec3q_t is for transforming using fixed-point numbers
+typedef struct {
+    int32_t x;
+    int32_t y;
+    int32_t z;
+} vec3q_t;
 
-int16_t vec3_mag(vec3_t vec);
-int16_t vec3_dot(vec3_t vecA, vec3_t vecB);
-vec3_t vec3_norm(vec3_t vec);
-vec3_t vec3_cross(vec3_t vecA, vec3_t vecB);
+vec3q_t vec3_toFixed(vec3_t vec, int shift);
+vec3_t vec3q_fromFixed(vec3q_t vec, int shift);
 
+vec3_t vec3_validateEuler(vec3_t vec);
+vec3_t vec3_mult(vec3_t vecA, vec3_t vecB);
+vec3q_t vec3q_add(vec3q_t vecA, vec3q_t vecB);
+vec3q_t vec3q_sub(vec3q_t vecA, vec3q_t vecB);
+vec3q_t vec3q_scale(vec3q_t vec, int32_t scalar);
+int32_t vec3q_mag(vec3q_t vec);
+int32_t vec3q_dot(vec3q_t vecA, vec3q_t vecB);
+vec3q_t vec3q_norm(vec3q_t vec);
+vec3q_t vec3q_cross(vec3q_t vecA, vec3q_t vecB);
 #endif

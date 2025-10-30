@@ -17,4 +17,6 @@ typedef struct {
     int8_t num_points;
 } curve3_t;
 
+int allocCurve(curve3_t **array, size_t *count);
+
 #endif
