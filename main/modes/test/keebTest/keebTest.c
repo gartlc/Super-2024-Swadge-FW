@@ -40,8 +40,9 @@ static void keebMainLoop(int64_t elapsedUs);
  * @param label      The string key
  * @param selected   If the A button was pressed
  * @param settingVal If scrolled to, indicates the value
+ * @return true to go up a menu level, false to remain here
  */
-static void kbMenuCb(const char* label, bool selected, uint32_t settingVal);
+static bool kbMenuCb(const char* label, bool selected, uint32_t settingVal);
 
 /**
  * @brief Draws the result of the text stream
@@ -168,25 +169,47 @@ static void keebEnterMode(void)
     // Init Menu
     kbTest->menu = initMenu(keebTestName, kbMenuCb);
     addSingleItemToMenu(kbTest->menu, teMenuStart);
+
+    settingParam_t fontOpt = {
+        .def = fontSettingsValues[0],
+        .key = NULL,
+        .min = fontSettingsValues[0],
+        .max = fontSettingsValues[ARRAY_SIZE(fontSettingsValues) - 1],
+    };
+
+    settingParam_t colorOpt = {
+        .def = colorSettingsValues[0],
+        .key = NULL,
+        .min = colorSettingsValues[0],
+        .max = colorSettingsValues[ARRAY_SIZE(colorSettingsValues) - 1],
+    };
+
+    settingParam_t typingOpt = {
+        .def = typingModeSettingsValues[0],
+        .key = NULL,
+        .min = typingModeSettingsValues[0],
+        .max = typingModeSettingsValues[ARRAY_SIZE(typingModeSettingsValues) - 1],
+    };
+
     addSettingsOptionsItemToMenu(kbTest->menu, teMenuFont, fontSettingsOptions, fontSettingsValues,
-                                 ARRAY_SIZE(fontSettingsValues), getScreensaverTimeSettingBounds(), 0);
+                                 ARRAY_SIZE(fontSettingsValues), &fontOpt, 0);
     kbTest->menu = startSubMenu(kbTest->menu, teMenuBG);
     addSingleItemToMenu(kbTest->menu, teMenuTransparent);
     kbTest->menu = startSubMenu(kbTest->menu, teMenuSolid);
     addSingleItemToMenu(kbTest->menu, teMenuSolidActive);
     addSettingsOptionsItemToMenu(kbTest->menu, colorSettingLabel1, colorSettingsOptions, colorSettingsValues,
-                                 ARRAY_SIZE(colorSettingsValues), getScreensaverTimeSettingBounds(), c000);
+                                 ARRAY_SIZE(colorSettingsValues), &colorOpt, c000);
     kbTest->menu = endSubMenu(kbTest->menu);
     addSingleItemToMenu(kbTest->menu, teMenuSprite);
     kbTest->menu = endSubMenu(kbTest->menu);
     addSettingsOptionsItemToMenu(kbTest->menu, colorSettingLabel2, colorSettingsOptions, colorSettingsValues,
-                                 ARRAY_SIZE(colorSettingsValues), getScreensaverTimeSettingBounds(), c555);
+                                 ARRAY_SIZE(colorSettingsValues), &colorOpt, c555);
     addSettingsOptionsItemToMenu(kbTest->menu, colorSettingLabel3, colorSettingsOptions, colorSettingsValues,
-                                 ARRAY_SIZE(colorSettingsValues), getScreensaverTimeSettingBounds(), c555);
+                                 ARRAY_SIZE(colorSettingsValues), &colorOpt, c555);
     kbTest->menu = startSubMenu(kbTest->menu, teMenuShadow);
     addSingleItemToMenu(kbTest->menu, teMenuShadowActive);
     addSettingsOptionsItemToMenu(kbTest->menu, colorSettingLabel4, colorSettingsOptions, colorSettingsValues,
-                                 ARRAY_SIZE(colorSettingsValues), getScreensaverTimeSettingBounds(), c111);
+                                 ARRAY_SIZE(colorSettingsValues), &colorOpt, c111);
     kbTest->menu = endSubMenu(kbTest->menu);
     addSingleItemToMenu(kbTest->menu, teMenuEnter);
     addSingleItemToMenu(kbTest->menu, teMenuCaps);
@@ -194,7 +217,7 @@ static void keebEnterMode(void)
     addSingleItemToMenu(kbTest->menu, teMenuCount);
     addSingleItemToMenu(kbTest->menu, teMenuPrompt);
     addSettingsOptionsItemToMenu(kbTest->menu, teMenuTypingMode, typingModeSettingsOptions, typingModeSettingsValues,
-                                 ARRAY_SIZE(typingModeSettingsValues), getScreensaverTimeSettingBounds(), 1);
+                                 ARRAY_SIZE(typingModeSettingsValues), &typingOpt, 1);
     addSingleItemToMenu(kbTest->menu, teMenuReset);
     addSingleItemToMenu(kbTest->menu, teMenuResetHard);
 
@@ -285,7 +308,7 @@ static void keebMainLoop(int64_t elapsedUs)
     }
 }
 
-static void kbMenuCb(const char* label, bool selected, uint32_t settingVal)
+static bool kbMenuCb(const char* label, bool selected, uint32_t settingVal)
 {
     if (selected)
     {
@@ -466,6 +489,8 @@ static void kbMenuCb(const char* label, bool selected, uint32_t settingVal)
     {
         kbTest->typingMode = settingVal;
     }
+
+    return false;
 }
 
 static void reset()

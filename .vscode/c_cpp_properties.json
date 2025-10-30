@@ -60,8 +60,6 @@
             "includePath": [
                 "${config:idf.espIdfPath}/components/**",
                 "${config:idf.espIdfPathWin}/components/**",
-                "${config:idf.espAdfPath}/components/**",
-                "${config:idf.espAdfPathWin}/components/**",
                 "${workspaceFolder}/main/**",
                 "${workspaceFolder}/components/**",
                 "C:/Users/chris/esp/Super-2024-Swadge-FW/emulator/**",
@@ -71,8 +69,6 @@
                 "path": [
                     "${config:idf.espIdfPath}/components",
                     "${config:idf.espIdfPathWin}/components",
-                    "${config:idf.espAdfPath}/components/**",
-                    "${config:idf.espAdfPathWin}/components/**",
                     "${workspaceFolder}/main/**",
                     "${workspaceFolder}/components/**"
                 ],
