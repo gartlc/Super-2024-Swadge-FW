@@ -3,16 +3,15 @@
 #include "mat3.h"
 #include "curve3.h"
 #include <stdlib.h>
+#include <esp_log.h>
+#include <esp_timer.h>
 
 #define MAXSHAPELINE 64
-#define INT_TO_STR(n) ({ \
-    static char str[32]; \
-    snprintf(str, sizeof(str), "%d", (n)); \
-    str; \
-})
 
+// Mode-specific function declarations
+void visualizerAudioCallback(uint16_t* samples, uint32_t sampleCnt);
+void visualizerButtonCallback(buttonEvt_t* evt);
 const char visualizerModeName[] = "Visualizer";
- 
 static void visualizerEnterMode(void);
 static void visualizerExitMode(void);
 static void visualizerMainLoop(int64_t elapsedUs);
@@ -27,14 +26,14 @@ swadgeMode_t visualizerMode = {
     .fnEnterMode              = visualizerEnterMode,
     .fnExitMode               = visualizerExitMode,
     .fnMainLoop               = visualizerMainLoop,
-    .fnAudioCallback          = NULL,
+    .fnAudioCallback          = visualizerAudioCallback,
     .fnBackgroundDrawCallback = NULL,
     .fnEspNowRecvCb           = NULL,
     .fnEspNowSendCb           = NULL,
     .fnAdvancedUSB            = NULL,
 };
 
-// Declare curves here so we can access them in the main loop
+// Declare curves and some basic transformation matrices/vectors
 static size_t countCurves = 0;
 static curve3_t *curves = NULL;
 mat3_t camK;
@@ -54,8 +53,6 @@ vec3_t rotEuler;
 int allocCurve(curve3_t **array, size_t *count)
 // Allocates memory for a new curve3_t to be added, attempting realloc with a tmp pointer first
 {   
-    // curve3_t *tmp = realloc(*array, (*count + 1) * sizeof(curve3_t));
-    // Allocate using faster 8-bit RAM. If we run out, we can use MALLOC_CAP_SPIRAM (larger, but slower)
     curve3_t *tmp = (curve3_t*)heap_caps_realloc(*array, (*count + 1) * sizeof(curve3_t), MALLOC_CAP_8BIT);
     if (!tmp) 
     {
@@ -70,8 +67,11 @@ int allocCurve(curve3_t **array, size_t *count)
 
 static void visualizerEnterMode()
 {
+    // Start sampling mic when mode is opened
+    startMic();
+
     // Open and parse custom .shapes file
-    FILE *f = fopen("./main/modes/music/visualizer/shapes/p2.shapes", "r");
+    FILE *f = fopen("./main/modes/music/visualizer/shapes/vector_u.shapes", "r");
     char line[MAXSHAPELINE];
     while(fgets(line, MAXSHAPELINE, f) != NULL)
     {   
@@ -130,7 +130,7 @@ static void visualizerEnterMode()
     vecOffset = (vec3_t){
         .x = 0,
         .y = 0,
-        .z = -40
+        .z = -100
     };
     vecOffsetFixed = vec3_toFixed(vecOffset, 4);
 
@@ -163,64 +163,44 @@ static void visualizerEnterMode()
     };
 }
  
+static void visualizerExitMode()
+{   
+    // Clean up 
+    stopMic();
+    heap_caps_free(curves);
+}
+ 
 static void visualizerMainLoop(int64_t elapsedUs)
 {
     buttonEvt_t evt;
-    char str[24];
-    // while (checkButtonQueueWrapper(&evt))
-    // {
-    //     if (evt.down)
-    //     {
-    //         if (evt.button & PB_UP)
-    //         {
-    //             vecOffsetFixed.y += TO_FIXED(2, 4);
-    //         } else if (evt.button & PB_DOWN)
-    //         {
-    //             vecOffsetFixed.y -= TO_FIXED(2, 4);
-    //         } else if (evt.button & PB_LEFT)
-    //         {
-    //             vecOffsetFixed.x += TO_FIXED(2, 4);
-    //         } else if (evt.button & PB_RIGHT)
-    //         {
-    //             vecOffsetFixed.x -= TO_FIXED(2, 4);
-    //         } else if (evt.button & PB_A)
-    //         {
-    //             vecOffsetFixed.z -= TO_FIXED(1, 4);
-    //         } else if (evt.button & PB_B)
-    //         {
-    //             vecOffsetFixed.z += TO_FIXED(1, 4);
-    //         }
-    //     }
-    // }
-
     while (checkButtonQueueWrapper(&evt))
     {
         if (evt.down)
         {
             if (evt.button & PB_UP)
             {
-                rotEuler.x += 3;
+                rotEuler.x += 2;
             } else if (evt.button & PB_DOWN)
             {
-                rotEuler.x -= 3;
+                rotEuler.x -= 2;
             } else if (evt.button & PB_LEFT)
             {
-                rotEuler.y += 3;
+                rotEuler.y += 2;
             } else if (evt.button & PB_RIGHT)
             {
-                rotEuler.y -= 3;
+                rotEuler.y -= 2;
             } else if (evt.button & PB_A)
             {
-                rotEuler.z += 3;
+                rotEuler.z += 2;
             } else if (evt.button & PB_B)
             {
-                rotEuler.z -= 3;
+                rotEuler.z -= 2;
             }
         }
     }
 
-    // rotEuler.x += 3;
-    rotEuler.y -= 5;
+    // rotEuler.x += 1;
+    rotEuler.y -= 3;
     // rotEuler.z += 3;
 
     rotEuler = vec3_validateEuler(rotEuler);
@@ -236,16 +216,11 @@ static void visualizerMainLoop(int64_t elapsedUs)
         curve3_t curve = curves[i];
         for (int j = 0; j < curve.num_points; j++) 
         {
-            // char str[12];
-            // sprintf(str, "%d", curve.points[j].x);
-            // puts(str);
-
             vec3_t vec = curve.points[j];
             vec = vec3_mult(vec, vecFlipY);
             vec = mat3_rotVec(rotMat, vec);
             vec3q_t vecFixed = vec3_toFixed(vec, 4);
-            // Scale by 1/8
-            vecFixed = vec3q_scale(vecFixed, 1);
+            // vecFixed = vec3q_scale(vecFixed, 1);
             vecFixed = vec3q_add(vecFixed, vecOffsetCenterFixed);
 
             // vecFixed = vec3q_add(vecFixed, vecOffsetFixed);
@@ -262,12 +237,13 @@ static void visualizerMainLoop(int64_t elapsedUs)
         { 
             drawCubicBezier(vT[0].x, vT[0].y, vT[1].x, vT[1].y, vT[2].x, vT[2].y, vT[3].x, vT[3].y, curve.color);
         }
-        
     }
+}
+
+void visualizerAudioCallback(uint16_t* samples, uint32_t sampleCnt) {
 
 }
 
-static void visualizerExitMode()
-{
-    heap_caps_free(curves);
+void visualizerButtonCallback(buttonEvt_t* evt) {
+
 }

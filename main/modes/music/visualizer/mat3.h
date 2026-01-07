@@ -33,8 +33,8 @@ mat3_t mat3_identity(void);
 mat3q_t mat3q_multMat(mat3q_t matA, mat3q_t matB);
 vec3q_t mat3q_multVec(mat3q_t mat, vec3q_t vec);
 vec3_t mat3_rotVec(mat3_t mat, vec3_t vec);
-vec3q_t mat3_rotVecInv(mat3q_t mat, vec3q_t vec);
-mat3q_t mat3_transpose(mat3q_t mat);
+vec3q_t mat3q_rotVecInv(mat3q_t mat, vec3q_t vec);
+mat3q_t mat3q_transpose(mat3q_t mat);
 mat3_t mat3_fromIntrinsics(int16_t focalLength, int16_t resX, int16_t resY);
 vec3q_t mat3q_projectVec(mat3q_t K, vec3q_t vec);
 #endif

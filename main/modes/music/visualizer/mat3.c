@@ -5,11 +5,41 @@
 #include "fixedPtMath.h"
 #include "trigonometry.h"
 
-#define INT_TO_STR(n) ({ \
-    static char str[32]; \
-    snprintf(str, sizeof(str), "%d", (n)); \
-    str; \
-})
+// NOTE: Fixed-point operations assume Q28.4 fixed point numbers
+
+/**
+ * @brief Converts a 16-bit mat3_t to a 32-bit fixed-point mat3q_t
+ *
+ * @param mat A mat3_t
+ * @param shift Number of bits to shift
+ * @return A new mat3q_t
+ */
+mat3q_t mat3_toFixed(mat3_t mat, int shift) {
+    mat3q_t matFixed = {{{0}}};
+    for (int row = 0; row < 3; row++) {
+        for (int col = 0; col < 3; col++) {
+            matFixed.m[row][col] = TO_FIXED(mat.m[row][col], shift);
+        }
+    }
+    return matFixed;
+}
+
+/**
+ * @brief Converts a 32-bit fixed-point mat3q_t to a 16-bit mat3_t
+ *
+ * @param mat A mat3q_t
+ * @param shift Number of bits to shift
+ * @return A new mat3_t
+ */
+mat3_t mat3q_fromFixed(mat3q_t mat, int shift) {
+    mat3_t matInt = {{{0}}};
+    for (int row = 0; row < 3; row++) {
+        for (int col = 0; col < 3; col++) {
+            matInt.m[row][col] = FROM_FIXED(mat.m[row][col], shift);
+        }
+    }
+    return matInt;
+}
 
 // NOTE: Fixed-point operations assume Q28.4 fixed point numbers
 
