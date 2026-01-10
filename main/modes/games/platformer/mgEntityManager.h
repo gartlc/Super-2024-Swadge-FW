@@ -34,6 +34,10 @@ struct mgEntityManager_t
     mgEntity_t* viewEntity;
     mgEntity_t* playerEntity;
     mgEntity_t* bossEntity;
+    mgEntity_t* currentUpdating;
+
+    uint16_t bossSpawnX; // Need to store to spawn more bosses in the boss rush.
+    uint16_t bossSpawnY; // Need to store to spawn more bosses in the boss rush.
 
     mgTilemap_t* tilemap;
 };
@@ -44,7 +48,10 @@ struct mgEntityManager_t
 void mg_initializeEntityManager(mgEntityManager_t* entityManager, mgWsgManager_t* wsgManager, mgTilemap_t* tilemap,
                                 mgGameData_t* gameData, mgSoundManager_t* soundManager);
 void mg_updateEntities(mgEntityManager_t* entityManager);
+void mg_updateScrollLockEntities(mgEntityManager_t* entityManager);
 void mg_deactivateAllEntities(mgEntityManager_t* entityManager, bool excludePlayer);
+void mg_deactivateAllEntitiesOfType(mgEntityManager_t* entityManager, uint8_t type);
+void mg_deactivateAllBullets(mgEntityManager_t* entityManager);
 void mg_drawEntities(mgEntityManager_t* entityManager);
 mgEntity_t* mg_findInactiveEntity(mgEntityManager_t* entityManager);
 
@@ -59,6 +66,7 @@ mgEntity_t* createScrollLockDown(mgEntityManager_t* entityManager, uint16_t x, u
 mgEntity_t* createScrollUnlock(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
 mgEntity_t* createHitBlock(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
 mgEntity_t* createPowerUp(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
+mgEntity_t* createExtraLife(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
 mgEntity_t* createWarp(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
 mgEntity_t* createDustBunny(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
 mgEntity_t* createWasp(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
@@ -99,9 +107,19 @@ mgEntity_t* createBouncepad(mgEntityManager_t* entityManager, uint16_t x, uint16
 mgEntity_t* createBouncepadDiagonal(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
 mgEntity_t* createLifeRefillSmall(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
 mgEntity_t* createLifeRefillLarge(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
-mgEntity_t* createBossTest(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
+mgEntity_t* createBossSeverYataga(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
+mgEntity_t* createBossSmashGorilla(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
+mgEntity_t* createBossGrindPangolin(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
+mgEntity_t* createBossDrainBat(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
+mgEntity_t* createBossKineticDonut(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
+mgEntity_t* createBossTrashMan(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
+mgEntity_t* createBossFlareGryffyn(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
+mgEntity_t* createBossDeadeyeChirpzi(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
+mgEntity_t* createBossBigma(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
+mgEntity_t* createBossHankWaddle(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
 mgEntity_t* createMixtape(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
 mgEntity_t* createBossDoor(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
+mgEntity_t* createShrubbleLv4(mgEntityManager_t* entityManager, uint16_t x, uint16_t y);
 void mg_freeEntityManager(mgEntityManager_t* entityManager);
 
 #endif

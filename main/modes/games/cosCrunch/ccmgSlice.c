@@ -2,7 +2,7 @@
 #include "cosCrunch.h"
 
 static void ccmgSliceInitMicrogame(void);
-static void ccmgSliceDestroyMicrogame(void);
+static void ccmgSliceDestroyMicrogame(bool successful);
 static void ccmgSliceMainLoop(int64_t elapsedUs, uint64_t timeRemainingUs, float timeScale,
                               cosCrunchMicrogameState state, buttonEvt_t buttonEvts[], uint8_t buttonEvtCount);
 static int16_t ccmgSliceGetYIntersect(int16_t angle, int16_t width);
@@ -113,7 +113,7 @@ static void ccmgSliceInitMicrogame(void)
     ccmgsl->canvasPos.y  = ccmgsl->targetArea.pos.y + ccmgsl->targetLineY - SPLATTER_AREA_HEIGHT / 2;
 
     ccmgsl->wsg.canvas.px = (paletteColor_t*)heap_caps_malloc_tag(
-        sizeof(paletteColor_t) * ccmgsl->wsg.canvas.w * ccmgsl->wsg.canvas.h, MALLOC_CAP_8BIT, "wsg");
+        sizeof(paletteColor_t) * ccmgsl->wsg.canvas.w * ccmgsl->wsg.canvas.h, MALLOC_CAP_8BIT, "slice_mg");
     for (uint32_t i = 0; i < ccmgsl->wsg.canvas.w * ccmgsl->wsg.canvas.h; i++)
     {
         ccmgsl->wsg.canvas.px[i] = cTransparent;
@@ -128,7 +128,7 @@ static void ccmgSliceInitMicrogame(void)
     ccmgsl->knifeAngle   = 0;
 }
 
-static void ccmgSliceDestroyMicrogame(void)
+static void ccmgSliceDestroyMicrogame(bool successful)
 {
     cosCrunchMicrogamePersistSplatter(ccmgsl->wsg.canvas, ccmgsl->canvasPos.x, ccmgsl->canvasPos.y);
 
@@ -255,9 +255,12 @@ static void ccmgSliceMainLoop(int64_t elapsedUs, uint64_t timeRemainingUs, float
     if (!ccmgsl->endFadeComplete)
     {
         // Dashed line to show where the cut should go
-        drawLine(ccmgsl->targetArea.pos.x, ccmgsl->targetLineY + ccmgsl->targetArea.pos.y,
-                 ccmgsl->targetArea.pos.x + ccmgsl->targetArea.width - 1,
-                 ccmgsl->targetLineY + ccmgsl->targetArea.pos.y - targetDeltaY, ccmgsl->tintColor->lowlight, 4);
+        for (int y = -1; y <= 1; y++)
+        {
+            drawLine(ccmgsl->targetArea.pos.x, ccmgsl->targetLineY + ccmgsl->targetArea.pos.y + y,
+                     ccmgsl->targetArea.pos.x + ccmgsl->targetArea.width - 1,
+                     ccmgsl->targetLineY + ccmgsl->targetArea.pos.y - targetDeltaY + y, ccmgsl->tintColor->lowlight, 4);
+        }
 
         // Solid line showing where the knife will cut
         drawLineFast(ccmgsl->knifeX, ccmgsl->knifeBottomY + ccmgsl->wsg.knifeBottom.h,

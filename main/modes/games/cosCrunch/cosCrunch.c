@@ -1,6 +1,8 @@
 #include "cosCrunch.h"
 
+#include "ccmgBeStrong.h"
 #include "ccmgBreakTime.h"
+#include "ccmgCatch.h"
 #include "ccmgDelivery.h"
 #include "ccmgSew.h"
 #include "ccmgSlice.h"
@@ -30,9 +32,45 @@ static const char cosCrunchYourScoreMsg[]    = "Your score: %" PRIi32;
 static const char cosCrunchPlayerScoreMsg[]  = "Player %" PRIu8 ": %" PRIi32;
 static const char cosCrunchNewHighScoreMsg[] = "New personal best!";
 
-static const char cosCrunchHowToPlayText[]
-    = "MAGFest is almost here, but your costumes aren't ready yet! Cut, sew, paint, and craft as fast as you can. "
-      "You'll never really be done, but maybe you can get close enough.";
+static const char* cosCrunchHowToPlayText[]
+    = {"MAGFest is almost here, but your costumes aren't ready yet! Cut, sew, paint, and craft as fast as you can with "
+       "the D-pad and A button. Every time you make a mistake, the Days 'Til MAG counts down.",
+       "See how many crafts you can complete before MAGFest arrives. Your score depends on it! You'll never really be "
+       "done, but maybe you can get close enough."};
+
+const cosCrunchMicrogame_t* const microgames[] = {
+    &ccmgBeStrong, &ccmgBreakTime, &ccmgCatch, &ccmgDelivery, &ccmgSew, &ccmgSlice, &ccmgSpray, &ccmgThread,
+};
+
+#define CC_NVS_NAMESPACE      "cc"
+#define NVS_KEY_TUTORIAL_SEEN "tutorialSeen"
+
+#define NUM_LIVES                        4
+#define MICROGAME_GET_READY_TIME_US      1000000
+#define MICROGAME_RESULT_DISPLAY_TIME_US 1800000
+#define SPEED_UP_INTERLUDE_TIME_US       1400000
+#define PLAYER_INTERLUDE_TIME_US         2500000
+#define TIMER_PIXELS_PER_SECOND          10
+
+#define HIGH_SCORE_COUNT 7
+
+#define MICROGAMES_BETWEEN_SPEED_UPS 5
+#define SPEED_UP_AMOUNT              .08f
+
+#define MESSAGE_X_OFFSET 25
+#define MESSAGE_Y_OFFSET 45
+#define TEXT_Y_SPACING   5
+
+#define MESSAGE_BOX_MARGIN    15
+#define MESSAGE_BOX_PADDING   10
+#define GAME_OVER_SCORE_BOX_Y 165
+
+#define EYES_SLOT_DEFAULT 3
+#define EYES_SLOT_HAPPY   4
+#define EYES_SLOT_SAD     5
+#define EYES_SLOT_DEAD    6
+#define EYES_SLOT_SWIRL   7
+#define EYES_SWIRL_FRAMES 4
 
 typedef enum
 {
@@ -62,6 +100,8 @@ typedef struct
 
 typedef struct
 {
+    uint8_t tutorialPage;
+
     uint8_t playerCount;
     uint8_t currentPlayer;
     bool announcePlayer;
@@ -76,6 +116,8 @@ typedef struct
         char message[32];
         int64_t timeUs;
         int64_t elapsedUs;
+        bool swirlyEyes;
+        int8_t swirlFrame;
     } interlude;
 
     menu_t* menu;
@@ -89,7 +131,15 @@ typedef struct
         uint64_t stateElapsedUs;
     } activeMicrogame;
 
-    tintColor_t timerTintColor;
+    struct
+    {
+        const cosCrunchMicrogame_t* game;
+        bool successful;
+    } previousMicrogame;
+
+    /// Record of microgames completed in the current game. Used for trophy purposes.
+    bool successfulMicrogames[ARRAY_SIZE(microgames)];
+
     /// Used to tint grayscale images (c111, c222, c333, c444). See PALETTE_* defines
     wsgPalette_t tintPalette;
 
@@ -116,6 +166,8 @@ typedef struct
     font_t bigFont;
     font_t bigFontOutline;
 
+    led_t leds[CONFIG_NUM_LEDS];
+
     midiFile_t menuBgm;
     midiFile_t gameBgm;
     midiFile_t gameOverBgm;
@@ -124,6 +176,7 @@ typedef struct
     uint32_t gameBgmOriginalTempo;
 
     highScores_t highScores;
+    swadgesona_t highScoreSonas[HIGH_SCORE_COUNT];
 } cosCrunch_t;
 cosCrunch_t* cc = NULL;
 
@@ -134,10 +187,101 @@ static void cosCrunchMainLoop(int64_t elapsedUs);
 static void cosCrunchBackgroundDrawCallback(int16_t x, int16_t y, int16_t w, int16_t h, int16_t up, int16_t upNum);
 static void cosCrunchResetBackground(void);
 static void cosCrunchDisplayMessage(const char* msg);
+static void cosCrunchClearLeds(void);
 static void cosCrunchDrawTimer(void);
 static void cosCrunchAddToSwadgePassPacket(swadgePassPacket_t* packet);
 static int32_t cosCrunchGetSwadgePassHighScore(const swadgePassPacket_t* packet);
 static void cosCrunchSetSwadgePassHighScore(swadgePassPacket_t* packet, int32_t highScore);
+
+/// This enum's order must match the trophy data order
+typedef enum
+{
+    STORES_CLOSED = 0,
+    SCORE_10,
+    SCORE_25,
+    SCORE_50,
+    UNBOTHERED,
+    COMPLETE_EVERY_MICROGAME,
+    COMPLETE_MULTIPLAYER_GAME,
+    BEAT_SP_SCORE,
+} ccTrophyIdx;
+const trophyData_t ccTrophies[] = {
+    {
+        .title       = "Store's Closed",
+        .description = "Miss out on a clearance bargain",
+        .image       = NO_IMAGE_SET,
+        .type        = TROPHY_TYPE_TRIGGER,
+        .difficulty  = TROPHY_DIFF_EASY,
+        .maxVal      = 1,
+    },
+    {
+        .title       = "10-Foot Rule",
+        .description = "Score 10 or more in single player mode",
+        .image       = NO_IMAGE_SET,
+        .type        = TROPHY_TYPE_PROGRESS,
+        .difficulty  = TROPHY_DIFF_MEDIUM,
+        .maxVal      = 10,
+    },
+    {
+        .title       = "Finished Seams",
+        .description = "Score 25 or more in single player mode",
+        .image       = NO_IMAGE_SET,
+        .type        = TROPHY_TYPE_PROGRESS,
+        .difficulty  = TROPHY_DIFF_HARD,
+        .maxVal      = 25,
+    },
+    {
+        .title       = "A Costume For Every Day",
+        .description = "Score 50 or more in single player mode",
+        .image       = NO_IMAGE_SET,
+        .type        = TROPHY_TYPE_PROGRESS,
+        .difficulty  = TROPHY_DIFF_EXTREME,
+        .maxVal      = 50,
+    },
+    {
+        .title       = "Unbothered. Moisturized. In My Lane.",
+        .description = "Beat \"Break Time\" and \"Be Strong\" back-to-back",
+        .image       = NO_IMAGE_SET,
+        .type        = TROPHY_TYPE_TRIGGER,
+        .difficulty  = TROPHY_DIFF_MEDIUM,
+        .maxVal      = 1,
+    },
+    {
+        .title       = "Mixed Media",
+        .description = "Complete every microgame in one session",
+        .image       = NO_IMAGE_SET,
+        .type        = TROPHY_TYPE_TRIGGER,
+        .difficulty  = TROPHY_DIFF_HARD,
+        .maxVal      = 1,
+    },
+    {
+        .title       = "Group Cosplay",
+        .description = "Play a multiplayer game",
+        .image       = NO_IMAGE_SET,
+        .type        = TROPHY_TYPE_TRIGGER,
+        .difficulty  = TROPHY_DIFF_EASY,
+        .maxVal      = 1,
+    },
+    {
+        .title       = "Hallway Photo",
+        .description = "Beat a SwadgePass score",
+        .image       = NO_IMAGE_SET,
+        .type        = TROPHY_TYPE_TRIGGER,
+        .difficulty  = TROPHY_DIFF_MEDIUM,
+        .maxVal      = 1,
+    },
+};
+const trophySettings_t ccTrophySettings = {
+    .drawFromBottom   = true,
+    .staticDurationUs = DRAW_STATIC_US * 2,
+    .slideDurationUs  = DRAW_SLIDE_US,
+    .namespaceKey     = "ccTrophies",
+};
+const trophyDataList_t ccTrophyData = {
+    .settings = &ccTrophySettings,
+    .list     = ccTrophies,
+    .length   = ARRAY_SIZE(ccTrophies),
+};
 
 swadgeMode_t cosCrunchMode = {
     .modeName                 = cosCrunchName,
@@ -156,40 +300,19 @@ swadgeMode_t cosCrunchMode = {
     .fnAdvancedUSB            = NULL,
     .fnDacCb                  = NULL,
     .fnAddToSwadgePassPacket  = cosCrunchAddToSwadgePassPacket,
+    .trophyData               = &ccTrophyData,
 };
 
 /// Uncomment this to play the specified game repeatedly instead of randomizing.
 /// Also enables the FPS counter.
 // #define DEV_MODE_MICROGAME &ccmgWhatever
 
-const cosCrunchMicrogame_t* const microgames[] = {
-    &ccmgBreakTime, &ccmgDelivery, &ccmgSew, &ccmgSlice, &ccmgSpray, &ccmgThread,
-};
-
-#define CC_NVS_NAMESPACE      "cc"
-#define NVS_KEY_TUTORIAL_SEEN "tutorialSeen"
-
-#define NUM_LIVES                        4
-#define MICROGAME_GET_READY_TIME_US      1000000
-#define MICROGAME_RESULT_DISPLAY_TIME_US 1800000
-#define SPEED_UP_INTERLUDE_TIME_US       1400000
-#define PLAYER_INTERLUDE_TIME_US         2500000
-#define TIMER_PIXELS_PER_SECOND          10
-
-#define MICROGAMES_BETWEEN_SPEED_UPS 5
-#define SPEED_UP_AMOUNT              .08f
-
-#define MESSAGE_X_OFFSET 25
-#define MESSAGE_Y_OFFSET 45
-#define TEXT_Y_SPACING   5
-
-#define MESSAGE_BOX_MARGIN    15
-#define MESSAGE_BOX_PADDING   10
-#define GAME_OVER_SCORE_BOX_Y 165
-
 tintColor_t const blueTimerTintColor   = {c013, c125, c235, 0};
 tintColor_t const yellowTimerTintColor = {c430, c540, c554, 0};
 tintColor_t const redTimerTintColor    = {c300, c500, c533, 0};
+led_t const blueLedColor               = {.r = 0, .g = 0, .b = 255};
+led_t const yellowLedColor             = {.r = 255, .g = 255, .b = 0};
+led_t const redLedColor                = {.r = 255, .g = 0, .b = 0};
 
 /// Colors randomly given to games that request a color
 tintColor_t tintColors[] = {
@@ -217,7 +340,8 @@ static void cosCrunchEnterMode(void)
     }
     else
     {
-        cc->state = CC_TUTORIAL;
+        cc->state        = CC_TUTORIAL;
+        cc->tutorialPage = 0;
         writeNamespaceNvs32(CC_NVS_NAMESPACE, NVS_KEY_TUTORIAL_SEEN, true);
     }
 
@@ -255,22 +379,24 @@ static void cosCrunchEnterMode(void)
     loadFont(RIGHTEOUS_150_FONT, &cc->bigFont, false);
     makeOutlineFont(&cc->bigFont, &cc->bigFontOutline, false);
 
-    loadMidiFile(HD_CREDITS_MID, &cc->menuBgm, true);
-    loadMidiFile(CHOWA_RACE_MID, &cc->gameBgm, true);
-    loadMidiFile(FAIRY_FOUNTAIN_MID, &cc->gameOverBgm, true);
+    loadMidiFile(COSPLAY_CRUNCH_MENU_MID, &cc->menuBgm, true);
+    loadMidiFile(COSPLAY_CRUNCH_BGM_MID, &cc->gameBgm, true);
+    loadMidiFile(COSPLAY_CRUNCH_GAME_OVER_MID, &cc->gameOverBgm, true);
 
     cc->bgmPlayer       = globalMidiPlayerGet(MIDI_BGM);
     cc->bgmPlayer->loop = true;
     midiGmOn(cc->bgmPlayer);
-    globalMidiPlayerSetVolume(MIDI_BGM, 12);
     globalMidiPlayerPlaySong(&cc->menuBgm, MIDI_BGM);
 
     cc->sfxPlayer = globalMidiPlayerGet(MIDI_SFX);
 
-    cc->highScores.highScoreCount = 10;
+    cosCrunchClearLeds();
+
+    cc->highScores.highScoreCount = HIGH_SCORE_COUNT;
     initHighScores(&cc->highScores, CC_NVS_NAMESPACE);
 
     list_t swadgePasses = {0};
+    // It's okay to get already-used passes, since the high score table only saves one per SP user.
     getSwadgePasses(&swadgePasses, &cosCrunchMode, true);
     saveHighScoresFromSwadgePass(&cc->highScores, CC_NVS_NAMESPACE, swadgePasses, cosCrunchGetSwadgePassHighScore);
     freeSwadgePasses(&swadgePasses);
@@ -280,7 +406,7 @@ static void cosCrunchExitMode(void)
 {
     if (cc->activeMicrogame.game != NULL)
     {
-        cc->activeMicrogame.game->fnDestroyMicrogame();
+        cc->activeMicrogame.game->fnDestroyMicrogame(cc->activeMicrogame.state == CC_MG_CELEBRATING);
     }
 
     deinitMenuCosCrunchRenderer(cc->menuRenderer);
@@ -303,6 +429,8 @@ static void cosCrunchExitMode(void)
     unloadMidiFile(&cc->menuBgm);
     unloadMidiFile(&cc->gameBgm);
     unloadMidiFile(&cc->gameOverBgm);
+
+    freeHighScoreSonas(&cc->highScores, cc->highScoreSonas);
 
     heap_caps_free(cc);
 }
@@ -327,15 +455,36 @@ static bool cosCrunchMenu(const char* label, bool selected, uint32_t value)
             // Reset the background splatter for the next game
             cosCrunchResetBackground();
 
+            // Reset per-game trophy tracking
+            cc->previousMicrogame.game       = NULL;
+            cc->previousMicrogame.successful = false;
+            for (int i = 0; i < ARRAY_SIZE(microgames); i++)
+            {
+                cc->successfulMicrogames[i] = false;
+            }
+
             globalMidiPlayerPlaySong(&cc->gameBgm, MIDI_BGM);
+
+            // Loading images will disable the default blink animation
+            ch32v003WriteBitmapAsset(EYES_SLOT_DEFAULT, EYES_DEFAULT_GS);
+            ch32v003WriteBitmapAsset(EYES_SLOT_HAPPY, EYES_HAPPY_GS);
+            ch32v003WriteBitmapAsset(EYES_SLOT_SAD, EYES_SAD_GS);
+            ch32v003WriteBitmapAsset(EYES_SLOT_DEAD, EYES_DEAD_GS);
+            ch32v003WriteBitmapAsset(EYES_SLOT_SWIRL + 0, EYES_SWIRL_0_GS);
+            ch32v003WriteBitmapAsset(EYES_SLOT_SWIRL + 1, EYES_SWIRL_1_GS);
+            ch32v003WriteBitmapAsset(EYES_SLOT_SWIRL + 2, EYES_SWIRL_2_GS);
+            ch32v003WriteBitmapAsset(EYES_SLOT_SWIRL + 3, EYES_SWIRL_3_GS);
+            ch32v003SelectBitmap(EYES_SLOT_DEFAULT);
         }
         else if (label == cosCrunchHighScoresLbl)
         {
+            initHighScoreSonas(&cc->highScores, cc->highScoreSonas);
             cc->state = CC_HIGH_SCORES;
         }
         else if (label == cosCrunchHowToPlayLbl)
         {
-            cc->state = CC_TUTORIAL;
+            cc->state        = CC_TUTORIAL;
+            cc->tutorialPage = 0;
         }
         else if (label == cosCrunchExitLbl)
         {
@@ -357,30 +506,38 @@ static void cosCrunchMainLoop(int64_t elapsedUs)
         {
             cc->menu = menuButton(cc->menu, evt);
         }
-        else if ((cc->state == CC_GAME_OVER || cc->state == CC_TUTORIAL || cc->state == CC_HIGH_SCORES)
-                 && (evt.button == PB_A || evt.button == PB_B || evt.button == PB_START) && evt.down)
+        else if (cc->state == CC_TUTORIAL)
         {
-            if (cc->state == CC_GAME_OVER)
+            if (evt.button == PB_A && evt.down)
             {
-                globalMidiPlayerPlaySong(&cc->menuBgm, MIDI_BGM);
+                cc->tutorialPage++;
+                if (cc->tutorialPage >= ARRAY_SIZE(cosCrunchHowToPlayText))
+                {
+                    cc->state = CC_MENU;
+                }
             }
-            cc->state = CC_MENU;
+            else if (evt.button == PB_B && evt.down)
+            {
+                cc->tutorialPage = MAX(cc->tutorialPage - 1, 0);
+            }
         }
-    }
+        else if (cc->state == CC_GAME_OVER && (evt.button == PB_A || evt.button == PB_B) && evt.down)
+        {
+            // Loading the cfun makes the midi player stutter, so don't let them continue during the game over song
+            if (cc->bgmPlayer->paused)
+            {
+                // Resume default blink animations while in menu/high scores/tutorial
+                ch32v003RunBinaryAsset(MATRIX_BLINKS_CFUN_BIN);
 
-    if (cc->activeMicrogame.game != NULL)
-    {
-        if (cc->activeMicrogame.gameTimeRemainingUs <= cc->activeMicrogame.game->timeoutUs / 4)
-        {
-            cc->timerTintColor = redTimerTintColor;
+                cc->bgmPlayer->loop = true;
+                globalMidiPlayerPlaySong(&cc->menuBgm, MIDI_BGM);
+
+                cc->state = CC_MENU;
+            }
         }
-        else if (cc->activeMicrogame.gameTimeRemainingUs <= cc->activeMicrogame.game->timeoutUs / 2)
+        else if (cc->state == CC_HIGH_SCORES && (evt.button == PB_A || evt.button == PB_B) && evt.down)
         {
-            cc->timerTintColor = yellowTimerTintColor;
-        }
-        else
-        {
-            cc->timerTintColor = blueTimerTintColor;
+            cc->state = CC_MENU;
         }
     }
 
@@ -390,8 +547,9 @@ static void cosCrunchMainLoop(int64_t elapsedUs)
         cc->state          = CC_INTERLUDE;
         snprintf(cc->interlude.message, sizeof(cc->interlude.message), cosCrunchInterludePlayerMsg,
                  cc->currentPlayer + 1);
-        cc->interlude.timeUs    = PLAYER_INTERLUDE_TIME_US;
-        cc->interlude.elapsedUs = 0;
+        cc->interlude.timeUs     = PLAYER_INTERLUDE_TIME_US;
+        cc->interlude.elapsedUs  = 0;
+        cc->interlude.swirlyEyes = false;
     }
 
     switch (cc->state)
@@ -405,7 +563,7 @@ static void cosCrunchMainLoop(int64_t elapsedUs)
             if (cc->activeMicrogame.game != NULL)
             {
                 midiAllSoundOff(cc->sfxPlayer);
-                cc->activeMicrogame.game->fnDestroyMicrogame();
+                cc->activeMicrogame.game->fnDestroyMicrogame(cc->activeMicrogame.state == CC_MG_CELEBRATING);
                 cc->activeMicrogame.game = NULL;
             }
 
@@ -415,6 +573,21 @@ static void cosCrunchMainLoop(int64_t elapsedUs)
             {
                 cc->state = CC_MICROGAME_PENDING;
             }
+            else if (cc->interlude.swirlyEyes)
+            {
+                int64_t frame = cc->interlude.elapsedUs / (cc->interlude.timeUs / EYES_SWIRL_FRAMES);
+                if (cc->interlude.swirlFrame != frame)
+                {
+                    ch32v003SelectBitmap(EYES_SLOT_SWIRL + frame);
+                    cc->interlude.swirlFrame = frame;
+                }
+            }
+            else
+            {
+                ch32v003SelectBitmap(EYES_SLOT_DEFAULT);
+            }
+
+            cosCrunchClearLeds();
 
             break;
         }
@@ -422,7 +595,7 @@ static void cosCrunchMainLoop(int64_t elapsedUs)
         case CC_MICROGAME_PENDING:
             if (cc->activeMicrogame.game != NULL)
             {
-                cc->activeMicrogame.game->fnDestroyMicrogame();
+                cc->activeMicrogame.game->fnDestroyMicrogame(cc->activeMicrogame.state == CC_MG_CELEBRATING);
             }
 
             // Reset anything that the previous microgame might have monkeyed with
@@ -438,7 +611,7 @@ static void cosCrunchMainLoop(int64_t elapsedUs)
             do
             {
                 newMicrogame = microgames[esp_random() % ARRAY_SIZE(microgames)];
-            } while (cc->activeMicrogame.game != NULL && cc->activeMicrogame.game == newMicrogame);
+            } while (cc->previousMicrogame.game != NULL && cc->previousMicrogame.game == newMicrogame);
             cc->activeMicrogame.game = newMicrogame;
 #endif
             cc->activeMicrogame.game->fnInitMicrogame();
@@ -447,6 +620,8 @@ static void cosCrunchMainLoop(int64_t elapsedUs)
             cc->activeMicrogame.state               = CC_MG_GET_READY;
             cc->activeMicrogame.stateElapsedUs      = 0;
             cc->state                               = CC_MICROGAME_RUNNING;
+
+            ch32v003SelectBitmap(EYES_SLOT_DEFAULT);
             break;
 
         case CC_MICROGAME_RUNNING:
@@ -513,6 +688,7 @@ static void cosCrunchMainLoop(int64_t elapsedUs)
                         if (totalLives == 0)
                         {
                             cc->state = CC_GAME_OVER_PENDING;
+                            ch32v003SelectBitmap(EYES_SLOT_DEAD);
                         }
                         else
                         {
@@ -528,14 +704,16 @@ static void cosCrunchMainLoop(int64_t elapsedUs)
                                 cc->timeScale += SPEED_UP_AMOUNT;
                                 cc->state = CC_INTERLUDE;
                                 strcpy(cc->interlude.message, cosCrunchInterludeSpeedUpMsg);
-                                cc->interlude.timeUs    = SPEED_UP_INTERLUDE_TIME_US;
-                                cc->interlude.elapsedUs = 0;
+                                cc->interlude.timeUs     = SPEED_UP_INTERLUDE_TIME_US;
+                                cc->interlude.elapsedUs  = 0;
+                                cc->interlude.swirlyEyes = true;
+                                cc->interlude.swirlFrame = -1;
 
                                 if (cc->gameBgmOriginalTempo == 0)
                                 {
                                     cc->gameBgmOriginalTempo = cc->bgmPlayer->tempo;
                                 }
-                                cc->bgmPlayer->tempo = cc->gameBgmOriginalTempo / cc->timeScale;
+                                midiSetTempo(cc->bgmPlayer, cc->gameBgmOriginalTempo / cc->timeScale);
                             }
                             else
                             {
@@ -571,20 +749,43 @@ static void cosCrunchMainLoop(int64_t elapsedUs)
         case CC_GAME_OVER_PENDING:
         {
             cc->state = CC_GAME_OVER;
-            cc->activeMicrogame.game->fnDestroyMicrogame();
+            cc->activeMicrogame.game->fnDestroyMicrogame(cc->activeMicrogame.state == CC_MG_CELEBRATING);
             cc->activeMicrogame.game = NULL;
 
             if (cc->playerCount == 1)
             {
+                int32_t lowestSwadgePassScore = INT32_MAX;
+                for (int i = 0; i < HIGH_SCORE_COUNT; i++)
+                {
+                    int32_t score = cc->highScores.highScores[i].score;
+                    if (cc->highScores.highScores[i].swadgesona.packedName != 0 && score > 0)
+                    {
+                        lowestSwadgePassScore = MIN(lowestSwadgePassScore, score);
+                    }
+                }
+
                 cc->personalBestAchieved = cc->players[0].score > cc->highScores.userHighScore;
-                score_t scores[]         = {{.score = cc->players[0].score, .swadgePassUsername = 0}};
+                score_t scores[]         = {{.score = cc->players[0].score, .spKey = {0}, .swadgesona = {0}}};
                 updateHighScores(&cc->highScores, CC_NVS_NAMESPACE, scores, ARRAY_SIZE(scores));
+
+                trophyUpdateMilestone(&ccTrophies[SCORE_10], cc->players[0].score, 50);
+                trophyUpdateMilestone(&ccTrophies[SCORE_25], cc->players[0].score, 20);
+                trophyUpdateMilestone(&ccTrophies[SCORE_50], cc->players[0].score, 20);
+
+                if (cc->players[0].score > lowestSwadgePassScore)
+                {
+                    trophyUpdate(&ccTrophies[BEAT_SP_SCORE], 1, true);
+                }
             }
             else
             {
                 cc->personalBestAchieved = false;
+                trophyUpdate(&ccTrophies[COMPLETE_MULTIPLAYER_GAME], 1, true);
             }
 
+            cosCrunchClearLeds();
+
+            cc->bgmPlayer->loop = false;
             globalMidiPlayerPlaySong(&cc->gameOverBgm, MIDI_BGM);
             break;
         }
@@ -645,44 +846,37 @@ static void cosCrunchMainLoop(int64_t elapsedUs)
             drawText(&cc->bigFont, c555, cosCrunchHowToPlayLbl, (TFT_WIDTH - tw) / 2, 15);
             drawText(&cc->bigFontOutline, c000, cosCrunchHowToPlayLbl, (TFT_WIDTH - tw) / 2, 15);
 
+            const char* msgText = cosCrunchHowToPlayText[cc->tutorialPage];
             int16_t xOff = 30, yOff = 85;
-            int16_t textHeight
-                = textWordWrapHeight(&cc->font, cosCrunchHowToPlayText, TFT_WIDTH - xOff * 2, TFT_HEIGHT - yOff - xOff);
+            int16_t textHeight = textWordWrapHeight(&cc->font, msgText, TFT_WIDTH - xOff * 2, TFT_HEIGHT - yOff - xOff);
             drawMessageBox(20, 75, TFT_WIDTH - 20, 75 + textHeight + 20, cc->wsg.menuFold);
-            drawTextWordWrap(&cc->font, c000, cosCrunchHowToPlayText, &xOff, &yOff, TFT_WIDTH - xOff,
-                             TFT_HEIGHT - xOff);
+            drawTextWordWrap(&cc->font, c000, msgText, &xOff, &yOff, TFT_WIDTH - xOff, TFT_HEIGHT - xOff);
             break;
         }
 
         case CC_HIGH_SCORES:
         {
             uint16_t tw = textWidth(&cc->bigFont, cosCrunchHighScoresLbl);
-            drawText(&cc->bigFont, c555, cosCrunchHighScoresLbl, (TFT_WIDTH - tw) / 2, 15);
-            drawText(&cc->bigFontOutline, c000, cosCrunchHighScoresLbl, (TFT_WIDTH - tw) / 2, 15);
+            drawText(&cc->bigFont, c555, cosCrunchHighScoresLbl, (TFT_WIDTH - tw) / 2, -2);
+            drawText(&cc->bigFontOutline, c000, cosCrunchHighScoresLbl, (TFT_WIDTH - tw) / 2, -2);
 
-            int16_t yOff        = 75;
+            drawMessageBox(11, 53, TFT_WIDTH - 11, TFT_HEIGHT, cc->wsg.menuFold);
+
+            int16_t yOff        = 64;
             uint16_t scoreWidth = textWidth(&cc->font, "0000");
-            for (int i = 0; i < ARRAY_SIZE(cc->highScores.highScores); i++)
+            for (int i = 0; i < HIGH_SCORE_COUNT; i++)
             {
                 if (cc->highScores.highScores[i].score > 0)
                 {
-                    nameData_t username = {0};
-                    if (cc->highScores.highScores[i].swadgePassUsername == 0)
-                    {
-                        username = *getSystemUsername();
-                    }
-                    else
-                    {
-                        setUsernameFrom32(&username, cc->highScores.highScores[i].swadgePassUsername);
-                    }
-                    drawTextEllipsize(&cc->font, c555, username.nameBuffer, 20, yOff,
-                                      TFT_WIDTH - 20 * 2 - scoreWidth - 5, false);
+                    drawWsgSimpleHalf(&cc->highScoreSonas[i].image, 12, yOff - 10);
+                    drawTextEllipsize(&cc->font, c000, cc->highScoreSonas[i].name.nameBuffer, 47, yOff,
+                                      TFT_WIDTH - 67 - scoreWidth - 5, false);
 
                     char buf[16];
                     snprintf(buf, sizeof(buf), "%" PRIi32, cc->highScores.highScores[i].score);
                     tw = textWidth(&cc->font, buf);
-                    drawText(&cc->font, c555, buf, TFT_WIDTH - tw - 20, yOff);
-                    yOff += cc->font.height + TEXT_Y_SPACING;
+                    drawText(&cc->font, c000, buf, TFT_WIDTH - tw - 18, yOff);
+                    yOff += cc->font.height + TEXT_Y_SPACING + 11;
                 }
             }
 
@@ -690,11 +884,15 @@ static void cosCrunchMainLoop(int64_t elapsedUs)
         }
     }
 
-    // Tempo resets when the BGM loops, so we need to write the tempo every frame while the game is active
+    // Tempo resets when the BGM loops, so re-reset it
     if ((cc->state == CC_MICROGAME_PENDING || cc->state == CC_MICROGAME_RUNNING || cc->state == CC_INTERLUDE)
         && cc->gameBgmOriginalTempo != 0)
     {
-        cc->bgmPlayer->tempo = cc->gameBgmOriginalTempo / cc->timeScale;
+        uint32_t scaledTempo = cc->gameBgmOriginalTempo / cc->timeScale;
+        if (cc->bgmPlayer->tempo != scaledTempo)
+        {
+            midiSetTempo(cc->bgmPlayer, scaledTempo);
+        }
     }
 
 #ifdef DEV_MODE_MICROGAME
@@ -755,9 +953,72 @@ static void cosCrunchDisplayMessage(const char* msg)
                              TFT_HEIGHT - MESSAGE_Y_OFFSET);
 }
 
+static void cosCrunchClearLeds(void)
+{
+    for (uint8_t i = 0; i < CONFIG_NUM_LEDS; i++)
+    {
+        cc->leds[i].r = 0;
+        cc->leds[i].g = 0;
+        cc->leds[i].b = 0;
+    }
+    setLeds(cc->leds, CONFIG_NUM_LEDS);
+}
+
 static void cosCrunchDrawTimer()
 {
-    tintPalette(&cc->tintPalette, &cc->timerTintColor);
+    const tintColor_t* timerTintColor;
+    led_t const* ledColor;
+    bool topLeds, middleLeds, bottomLeds;
+    if (cc->activeMicrogame.gameTimeRemainingUs <= cc->activeMicrogame.game->timeoutUs / 4)
+    {
+        timerTintColor = &redTimerTintColor;
+
+        ledColor   = &redLedColor;
+        topLeds    = false;
+        middleLeds = false;
+        bottomLeds = cc->activeMicrogame.gameTimeRemainingUs > 0;
+    }
+    else if (cc->activeMicrogame.gameTimeRemainingUs <= cc->activeMicrogame.game->timeoutUs / 2)
+    {
+        timerTintColor = &yellowTimerTintColor;
+
+        ledColor   = &yellowLedColor;
+        topLeds    = false;
+        middleLeds = true;
+        bottomLeds = true;
+    }
+    else
+    {
+        timerTintColor = &blueTimerTintColor;
+
+        ledColor   = &blueLedColor;
+        topLeds    = true;
+        middleLeds = true;
+        bottomLeds = true;
+    }
+
+    for (uint8_t i = 0; i < CONFIG_NUM_LEDS; i++)
+    {
+        // LED indices as laid out on the swadge:
+        // 5 0
+        // 3 2
+        // 4 1
+        if ((bottomLeds && (i == 1 || i == 4)) || (middleLeds && (i == 2 || i == 3)) || (topLeds && (i == 0 || i == 5)))
+        {
+            cc->leds[i].r = ledColor->r;
+            cc->leds[i].g = ledColor->g;
+            cc->leds[i].b = ledColor->b;
+        }
+        else
+        {
+            cc->leds[i].r = 0;
+            cc->leds[i].g = 0;
+            cc->leds[i].b = 0;
+        }
+    }
+    setLeds(cc->leds, CONFIG_NUM_LEDS);
+
+    tintPalette(&cc->tintPalette, timerTintColor);
 
     if (cc->activeMicrogame.gameTimeRemainingUs > 0)
     {
@@ -782,11 +1043,11 @@ static void cosCrunchDrawTimer()
         // Long straight paint line
         int16_t timerX = 61 + offsetX + cc->wsg.timerLeft.w;
         int16_t timerY = TFT_HEIGHT - 17 + offsetY;
-        fillDisplayArea(timerX, timerY, timerX + timer_width, timerY + 4, cc->timerTintColor.base);
+        fillDisplayArea(timerX, timerY, timerX + timer_width, timerY + 4, timerTintColor->base);
 
         // Paint line highlight, lowlight, shadow
-        drawLineFast(timerX, timerY + 1, timerX + timer_width, timerY + 1, cc->timerTintColor.highlight);
-        drawLineFast(timerX, timerY + 4, timerX + timer_width, timerY + 4, cc->timerTintColor.lowlight);
+        drawLineFast(timerX, timerY + 1, timerX + timer_width, timerY + 1, timerTintColor->highlight);
+        drawLineFast(timerX, timerY + 4, timerX + timer_width, timerY + 4, timerTintColor->lowlight);
         drawLineFast(timerX, timerY + 5, timerX + timer_width, timerY + 5, c210);
 
         // Round end cap
@@ -847,12 +1108,47 @@ void cosCrunchMicrogameResult(bool successful)
         {
             cc->players[cc->currentPlayer].score++;
             cc->activeMicrogame.state = CC_MG_CELEBRATING;
+            ch32v003SelectBitmap(EYES_SLOT_HAPPY);
         }
         else
         {
             cc->players[cc->currentPlayer].lives--;
             cc->activeMicrogame.state = CC_MG_DESPAIRING;
+            ch32v003SelectBitmap(EYES_SLOT_SAD);
         }
         cc->activeMicrogame.stateElapsedUs = 0;
+
+        if (!successful && cc->activeMicrogame.game == &ccmgCatch)
+        {
+            trophyUpdate(&ccTrophies[STORES_CLOSED], 1, true);
+        }
+
+        if (successful && cc->previousMicrogame.successful
+            && ((cc->activeMicrogame.game == &ccmgBeStrong && cc->previousMicrogame.game == &ccmgBreakTime)
+                || (cc->activeMicrogame.game == &ccmgBreakTime && cc->previousMicrogame.game == &ccmgBeStrong)))
+        {
+            trophyUpdate(&ccTrophies[UNBOTHERED], 1, true);
+        }
+
+        if (successful)
+        {
+            bool allSuccessful = true;
+            for (int i = 0; i < ARRAY_SIZE(microgames); i++)
+            {
+                if (microgames[i] == cc->activeMicrogame.game)
+                {
+                    cc->successfulMicrogames[i] = true;
+                }
+                allSuccessful &= cc->successfulMicrogames[i];
+            }
+
+            if (allSuccessful)
+            {
+                trophyUpdate(&ccTrophies[COMPLETE_EVERY_MICROGAME], 1, true);
+            }
+        }
+
+        cc->previousMicrogame.game       = cc->activeMicrogame.game;
+        cc->previousMicrogame.successful = successful;
     }
 }

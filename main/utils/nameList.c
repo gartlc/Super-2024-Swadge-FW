@@ -136,7 +136,7 @@ static void _drawFadingWords(nameData_t* nd);
 //==============================================================================
 
 static uint8_t baseMac[6];
-static int listLen[3];
+static const int listLen[3] = {ARRAY_SIZE(adjList1), ARRAY_SIZE(adjList2), ARRAY_SIZE(nounList)};
 static uint8_t mutatorSeeds[3];
 nameData_t swadgeUsername;
 
@@ -146,9 +146,6 @@ nameData_t swadgeUsername;
 
 void initUsernameSystem()
 {
-    listLen[0] = ARRAY_SIZE(adjList1);
-    listLen[1] = ARRAY_SIZE(adjList2);
-    listLen[2] = ARRAY_SIZE(nounList);
     _getMacAddress();
 
     // Initialize
@@ -165,7 +162,6 @@ void initUsernameSystem()
         // Unpack currently stored data
         setUsernameFrom32(&swadgeUsername, packed);
     }
-    setUsernameFromND(&swadgeUsername);
     // ESP_LOGI("USRN", "Current name code: %d, which is %d, %d, %d, %d", GET_PACKED_USERNAME(swadgeUsername),
     // swadgeUsername.idxs[0], swadgeUsername.idxs[1], swadgeUsername.idxs[2], swadgeUsername.randCode);
 }
@@ -407,8 +403,7 @@ void setUsernameFrom32(nameData_t* nd, int32_t packed)
 
 static bool _getMacAddress()
 {
-    esp_err_t ret = esp_wifi_get_mac(WIFI_IF_STA, baseMac);
-    if (ret != ESP_OK)
+    if (!getMacAddrNvs(baseMac))
     {
         ESP_LOGE("USRN", "Failed to read MAC address");
         for (int idx = 0; idx < 6; idx++)
@@ -458,12 +453,7 @@ static void _getWordFromList(int listIdx, int idx, char* buffer, int buffLen)
 static uint8_t _checkIfUserIdxInBounds(int8_t idx, uint8_t arrSize, uint8_t seed)
 {
     int range = arrSize >> USER_LIST_SHIFT;
-    while (idx < seed)
-    {
-        idx += range;
-    }
-    idx %= range;
-    return idx;
+    return ((idx - seed + arrSize) % range + seed) % arrSize;
 }
 
 // Drawing functions
@@ -503,7 +493,7 @@ static void _drawFadingWords(nameData_t* nd)
             }
             default:
             {
-                break;
+                continue;
             }
         }
         for (int offset = 1; offset < 4; offset++)

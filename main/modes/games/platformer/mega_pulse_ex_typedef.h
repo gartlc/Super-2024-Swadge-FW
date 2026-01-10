@@ -4,6 +4,8 @@
 #include "cnfs.h"
 #include "vector2d.h"
 #include "mgLeveldef.h"
+#include "palette.h"
+#include "trophy.h"
 
 //==============================================================================
 // Constants
@@ -16,13 +18,6 @@
 #define DESPAWN_THRESHOLD                   64
 #define MG_PLAYER_LIFEBAR_Y_BOTTOM_LOCATION 148
 
-static const cnfsFileIdx_t MG_BGMS[]
-    = {BGM_DEADEYE_CHIRPZI_MID, BGM_BOSS_DEADEYE_CHIRPZI_MID, BGM_DRAIN_BAT_MID,      BGM_BOSS_DRAIN_BAT_MID,
-       BGM_FLARE_GRYFFYN_MID,   BGM_BOSS_FLARE_GRIFFIN_MID,   BGM_GRIND_PANGOLIN_MID, BGM_BOSS_GRIND_PANGOLIN_MID,
-       BGM_KINETIC_DONUT_MID,   BGM_BOSS_KINETIC_DONUT_MID,   BGM_RIP_BARONESS_MID,   BGM_BOSS_HANK_WADDLE_MID,
-       BGM_SEVER_YAGATA_MID,    BGM_BOSS_SEVER_YAGATA_MID,    BGM_SMASH_GORILLA_MID,  BGM_BOSS_SMASH_GORILLA_MID,
-       BGM_BOSS_TRASH_MAN_MID,  BGM_BOSS_BIGMA_MID,           BGM_STAGE_SELECT_MID,   BGM_NAME_ENTRY_MID};
-
 //==============================================================================
 // Macros
 //==============================================================================
@@ -32,11 +27,19 @@ static const cnfsFileIdx_t MG_BGMS[]
 #define TO_PIXEL_COORDS(x)    ((x) >> SUBPIXEL_RESOLUTION)
 #define TO_SUBPIXEL_COORDS(x) ((x) << SUBPIXEL_RESOLUTION)
 
+//==============================================================================
+// Typedefs
+//==============================================================================
+
 typedef struct platformer_t platformer_t;
 typedef struct mgEntityManager_t mgEntityManager_t;
 typedef struct mgTilemap_t mgTilemap_t;
 typedef struct mgEntity_t mgEntity_t;
 typedef struct mgEntitySpawnData_t mgEntitySpawnData_t;
+
+//==============================================================================
+// Structs
+//==============================================================================
 
 typedef struct
 {
@@ -52,6 +55,10 @@ typedef struct
     const mg_EntityTileCollisionPointList_t* leftEdge;
 } mg_EntityTileCollider_t;
 
+//==============================================================================
+// Enums
+//==============================================================================
+
 typedef enum
 {
     MG_ST_NULL,
@@ -65,7 +72,8 @@ typedef enum
     MG_ST_GAME_OVER,
     MG_ST_HIGH_SCORE_ENTRY,
     MG_ST_HIGH_SCORE_TABLE,
-    MG_ST_PAUSE
+    MG_ST_PAUSE,
+    MG_ST_CUTSCENE,
 } mg_gameStateEnum_t;
 
 typedef enum
@@ -83,15 +91,28 @@ typedef enum
     MG_BGM_KINETIC_DONUT,
     MG_BGM_BOSS_KINETIC_DONUT,
     MG_BGM_RIP_BARONESS,
+
     MG_BGM_BOSS_HANK_WADDLE,
-    MG_BGM_SEVER_YAGATA,
-    MG_BGM_BOSS_SEVER_YAGATA,
+    MG_BGM_SEVER_YATAGA,
+    MG_BGM_BOSS_SEVER_YATAGA,
     MG_BGM_SMASH_GORILLA,
     MG_BGM_BOSS_SMASH_GORILLA,
     MG_BGM_BOSS_TRASH_MAN,
+
     MG_BGM_BOSS_BIGMA,
+    MG_BGM_LEVEL_CLEAR_JINGLE,
+    MG_BGM_POST_FIGHT,
+    MG_BGM_PRE_FIGHT,
+    MG_BGM_INTRO_STAGE,
     MG_BGM_STAGE_SELECT,
-    MG_BGM_NAME_ENTRY
+    MG_BGM_NAME_ENTRY,
+    MG_BGM_MAXIMUM_HYPE_CREDITS,
+    MG_BGM_OVO_LIVES,
+    MG_BGM_THE_GAUNTLET,
+    MG_BGM_THE_FINAL_MEGAJAM,
+    MG_BGM_LOOKS_LIKE_WE_MADE_IT,
+    MG_BGM_SAWTOOTHS_THEME,
+    MG_BGM_CLIMAX,
 } mg_bgmEnum_t;
 
 typedef enum
@@ -113,6 +134,7 @@ typedef enum
     MG_SP_PLAYER_JUMP3,
     MG_SP_PLAYER_JUMP4,
     MG_SP_PLAYER_SLIDE,
+    MG_SP_PLAYER_DASH_SLIDE,
     MG_SP_PLAYER_HURT,
     MG_SP_PLAYER_CLIMB,
     MG_SP_PLAYER_WIN,
@@ -160,7 +182,7 @@ typedef enum
     MG_SP_BOUNCE_BLOCK,
     MG_SP_INVISIBLE_WARP_WALL,
     MG_SP_INVISIBLE_WARP_FLOOR,
-    MG_SP_CHARGIN_SCHMUCK_IDLE,
+    MG_SP_SPIKY_MCGEE_2,
     MG_SP_CHARGIN_SCHMUCK_RUN1,
     MG_SP_CHARGIN_SCHMUCK_RUN2,
     MG_SP_TURRET_HORIZONTAL,
@@ -176,11 +198,55 @@ typedef enum
     MG_SP_BOUNCE_PAD,
     MG_SP_BOUNCE_PAD_DIAGONAL,
     MG_SP_MIXTAPE,
-    MG_SP_BOSS_IDLE,
-    MG_SP_BOSS_MOVE_1,
-    MG_SP_BOSS_MOVE_2,
-    MG_SP_BOSS_MOVE_3,
-    MG_SP_BOSS_DOOR
+    MG_SP_BOSS_DOOR,
+    MG_SP_PLAYER_HURT_2,
+    MG_SP_PLAYER_HURT_3,
+    MG_SP_PLAYER_MIC_DROP_1,
+    MG_SP_PLAYER_MIC_DROP_2,
+    MG_SP_CRAWLER_TOP,
+    MG_SP_CRAWLER_RIGHT,
+    MG_SP_CRAWLER_BOTTOM,
+    MG_SP_CRAWLER_LEFT,
+    MG_SP_PLAYER_SUREYOUCAN_1,
+    MG_SP_PLAYER_SUREYOUCAN_2,
+    MG_SP_CRUMBLED_BLOCK,
+    MG_SP_CHARGE_SHOT_LVL1_1,
+    MG_SP_CHARGE_SHOT_LVL1_2,
+    MG_SP_CHARGE_SHOT_LVL1_3,
+    MG_SP_CHARGE_SHOT_MAX_1,
+    MG_SP_CHARGE_SHOT_MAX_2,
+    MG_SP_CHARGE_SHOT_MAX_3,
+    MG_SP_BOSS_0,
+    MG_SP_BOSS_1,
+    MG_SP_BOSS_2,
+    MG_SP_BOSS_3,
+    MG_SP_BOSS_4,
+    MG_SP_BOSS_5,
+    MG_SP_BOSS_6,
+    MG_SP_BOSS_7,
+    MG_SP_PLAYER_DOUBLE_JUMP_0,
+    MG_SP_PLAYER_DOUBLE_JUMP_1,
+    MG_SP_PLAYER_DOUBLE_JUMP_2,
+    MG_SP_PLAYER_DOUBLE_JUMP_3,
+    MG_SP_PLAYER_DOUBLE_JUMP_4,
+    MG_SP_PLAYER_DOUBLE_JUMP_5,
+    MG_SP_EXTRA_LIFE_0,
+    MG_SP_EXTRA_LIFE_1,
+    MG_SP_EXTRA_LIFE_2,
+    MG_SP_EXTRA_LIFE_3,
+    MG_SP_EXTRA_LIFE_4,
+    MG_SP_EXTRA_LIFE_5,
+    MG_SP_EXTRA_LIFE_6,
+    MG_SP_EXTRA_LIFE_7,
+    MG_SP_PLAYER_DEATH_0,
+    MG_SP_PLAYER_DEATH_1,
+    MG_SP_PLAYER_DEATH_2,
+    MG_SP_PLAYER_DEATH_3,
+    MG_SP_PLAYER_DEATH_4,
+    MG_SP_PLAYER_DEATH_5,
+    MG_SP_PLAYER_DEATH_6,
+    MG_SP_PLAYER_DEATH_7,
+    MG_SP_PLAYER_DEATH_8,
 } mg_spriteDef_t;
 
 typedef enum
@@ -247,7 +313,6 @@ typedef enum
     MG_TILE_GOAL_1000PTS,
     MG_TILE_GOAL_2000PTS,
     MG_TILE_GOAL_5000PTS,
-    MG_TILE_BRICK_BLOCK,
     MG_TILE_CONTAINER_1,
     MG_TILE_CONTAINER_2,
     MG_TILE_CONTAINER_3,
@@ -281,7 +346,7 @@ typedef enum
     MG_TILE_BG_CLOUD_RU,
     MG_TILE_BG_CLOUD_D,
     MG_TILE_BG_CLOUD,
-    MG_TILE_BG_TALL_GRASS,
+    MG_TILE_BRICK_BLOCK,
     MG_TILE_BG_MOUNTAIN_L,
     MG_TILE_BG_MOUNTAIN_U,
     MG_TILE_BG_MOUNTAIN_R,
@@ -390,7 +455,7 @@ typedef enum
     MG_TILE_SOLID_VISIBLE_NONINTERACTIVE_7E,
     MG_TILE_SOLID_VISIBLE_NONINTERACTIVE_7F,
     MG_TILE_SOLID_VISIBLE_INTERACTIVE_80, // Container Block
-    MG_TILE_SOLID_VISIBLE_INTERACTIVE_81, // Brick Block
+    MG_TILE_SOLID_VISIBLE_INTERACTIVE_81, // Brick/Crumbling Block
     MG_TILE_SOLID_VISIBLE_INTERACTIVE_82,
     MG_TILE_SOLID_VISIBLE_INTERACTIVE_83,
     MG_TILE_SOLID_VISIBLE_INTERACTIVE_84,
@@ -423,11 +488,11 @@ typedef enum
     MG_TILE_SOLID_VISIBLE_INTERACTIVE_9F,
     MG_TILE_NONSOLID_VISIBLE_INTERACTIVE_A0, // Ladder/chain
     MG_TILE_NONSOLID_VISIBLE_INTERACTIVE_A1, // Bounce Block
-    MG_TILE_NONSOLID_VISIBLE_INTERACTIVE_A2,
-    MG_TILE_NONSOLID_VISIBLE_INTERACTIVE_A3,
-    MG_TILE_NONSOLID_VISIBLE_INTERACTIVE_A4,
-    MG_TILE_NONSOLID_VISIBLE_INTERACTIVE_A5,
-    MG_TILE_NONSOLID_VISIBLE_INTERACTIVE_A6,
+    MG_TILE_NONSOLID_VISIBLE_INTERACTIVE_A2, // Spikes/lava top
+    MG_TILE_NONSOLID_VISIBLE_INTERACTIVE_A3, // Spikes/lava left
+    MG_TILE_NONSOLID_VISIBLE_INTERACTIVE_A4, // Spikes/lava bottom
+    MG_TILE_NONSOLID_VISIBLE_INTERACTIVE_A5, // Spikes/lava right
+    MG_TILE_NONSOLID_VISIBLE_INTERACTIVE_A6, // Crumble block
     MG_TILE_NONSOLID_VISIBLE_INTERACTIVE_A7,
     MG_TILE_NONSOLID_VISIBLE_INTERACTIVE_A8,
     MG_TILE_NONSOLID_VISIBLE_INTERACTIVE_A9,
@@ -676,7 +741,7 @@ typedef enum
     MG_WSG_HP_BOSS_TOP_4,
     MG_WSG_HP_BOSS_TOP_5,
     MG_WSG_HP_BOSS_TOP_6,
-    MG_WSG_CHARGIN_SCHMUCK_IDLE,
+    MG_WSG_SPIKY_MCGEE_2,
     MG_WSG_CHARGIN_SCHMUCK_RUN1,
     MG_WSG_CHARGIN_SCHMUCK_RUN2,
     MG_WSG_TURRET_HORIZONTAL,
@@ -696,7 +761,59 @@ typedef enum
     MG_WSG_BOSS_MOVE_1,
     MG_WSG_BOSS_MOVE_2,
     MG_WSG_BOSS_MOVE_3,
-    MG_WSG_BOSS_DOOR
+    MG_WSG_BOSS_DOOR,
+    MG_WSG_PLAYER_DASH_SLIDE,
+    MG_WSG_PLAYER_HURT_2,
+    MG_WSG_PLAYER_HURT_3,
+    MG_WSG_PLAYER_MIC_DROP_1,
+    MG_WSG_PLAYER_MIC_DROP_2,
+    MG_WSG_PLAYER_SHIELD_1,
+    MG_WSG_PLAYER_SHIELD_2,
+    MG_WSG_PLAYER_SHIELD_3,
+    MG_WSG_PLAYER_SHIELD_4,
+    MG_WSG_PLAYER_SUREYOUCAN_1,
+    MG_WSG_PLAYER_SUREYOUCAN_2,
+    MG_WSG_CRUMBLED_BLOCK,
+    MG_WSG_SALSA,
+    MG_WSG_CHARGE_SHOT_LVL1_1,
+    MG_WSG_CHARGE_SHOT_LVL1_2,
+    MG_WSG_CHARGE_SHOT_LVL1_3,
+    MG_WSG_CHARGE_SHOT_MAX_1,
+    MG_WSG_CHARGE_SHOT_MAX_2,
+    MG_WSG_CHARGE_SHOT_MAX_3,
+    MG_WSG_HP_CAN_OF_SALSA_0,
+    MG_WSG_HP_CAN_OF_SALSA_1,
+    MG_WSG_HP_CAN_OF_SALSA_2,
+    MG_WSG_HP_CAN_OF_SALSA_3,
+    MG_WSG_HP_CAN_OF_SALSA_4,
+    MG_WSG_HP_CAN_OF_SALSA_5,
+    MG_WSG_HP_CAN_OF_SALSA_6,
+    MG_WSG_BOSS_RUSH_SYMBOL,
+    MG_WSG_HANK_SYMBOL,
+    MG_WSG_NEW_GAME_PLUS_SYMBOL,
+    MG_WSG_PLAYER_DOUBLE_JUMP_0,
+    MG_WSG_PLAYER_DOUBLE_JUMP_1,
+    MG_WSG_PLAYER_DOUBLE_JUMP_2,
+    MG_WSG_PLAYER_DOUBLE_JUMP_3,
+    MG_WSG_PLAYER_DOUBLE_JUMP_4,
+    MG_WSG_PLAYER_DOUBLE_JUMP_5,
+    MG_WSG_EXTRA_LIFE_0,
+    MG_WSG_EXTRA_LIFE_1,
+    MG_WSG_EXTRA_LIFE_2,
+    MG_WSG_EXTRA_LIFE_3,
+    MG_WSG_EXTRA_LIFE_4,
+    MG_WSG_EXTRA_LIFE_5,
+    MG_WSG_EXTRA_LIFE_6,
+    MG_WSG_EXTRA_LIFE_7,
+    MG_WSG_PLAYER_DEATH_0,
+    MG_WSG_PLAYER_DEATH_1,
+    MG_WSG_PLAYER_DEATH_2,
+    MG_WSG_PLAYER_DEATH_3,
+    MG_WSG_PLAYER_DEATH_4,
+    MG_WSG_PLAYER_DEATH_5,
+    MG_WSG_PLAYER_DEATH_6,
+    MG_WSG_PLAYER_DEATH_7,
+    MG_WSG_PLAYER_DEATH_8,
 } mg_wsgIndex_t;
 
 typedef enum
@@ -947,40 +1064,6 @@ typedef enum
     MG_EDGE_TBLR
 } mgEdge_t;
 
-/*
-static const int MG_1x2_TILE_COLLISION_OFFSETS_IN_PIXELS[]
-    = {0, 8, MG_EDGE_BLR, 0, -8, MG_EDGE_TLR};
-
-static const int MG_TILE_COLLISION_OFFSETS_1x2_BOTTOM_EDGE[]
-    = {-7, 15, 0, 15, 6, 15};
-
-static const int MG_TILE_COLLISION_OFFSETS_1x2_TOP_EDGE[]
-    = {-7, -15, 0, -15, 7, -15};
-
-static const int MG_TILE_COLLISION_OFFSETS_1x2_RIGHT_EDGE[]
-    = {8, 14, 8, 0, 8, -14};
-
-static const int MG_TILE_COLLISION_OFFSETS_1x2_LEFT_EDGE[]
-    = {-7, 14, -7, 0, -7, -14};
-*/
-
-static const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_1x2_bottomEdge
-    = {.collisionPoints = {{.x = -7, .y = 15}, {.x = 0, .y = 15}, {.x = 6, .y = 15}}, .size = 3};
-
-static const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_1x2_topEdge
-    = {.collisionPoints = {{.x = -7, .y = -15}, {.x = 0, .y = -15}, {.x = 7, .y = -15}}, .size = 3};
-
-static const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_1x2_rightEdge
-    = {.collisionPoints = {{.x = 8, .y = 14}, {.x = 8, .y = 0}, {.x = 8, .y = -14}}, .size = 3};
-
-static const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_1x2_leftEdge
-    = {.collisionPoints = {{.x = -7, .y = 14}, {.x = -7, .y = 0}, {.x = -7, .y = -14}}, .size = 3};
-
-static const mg_EntityTileCollider_t entityTileCollider_1x2 = {.bottomEdge = &mgTileCollisionOffsets_1x2_bottomEdge,
-                                                               .topEdge    = &mgTileCollisionOffsets_1x2_topEdge,
-                                                               .rightEdge  = &mgTileCollisionOffsets_1x2_rightEdge,
-                                                               .leftEdge   = &mgTileCollisionOffsets_1x2_leftEdge};
-
 typedef enum
 {
     MG_WSGSET_NULL = -1,
@@ -992,100 +1075,139 @@ typedef enum
     MG_WSGSET_DEADEYE_CHIRPZI,
     MG_WSGSET_SEVER_YATAGA,
     MG_WSGSET_GRIND_PANGOLIN,
-    MG_WSGSET_FLARE_GRYFFYN
+    MG_WSGSET_FLARE_GRYFFYN,
+    MG_WSGSET_TRASH_MAN,
+    MG_WSGSET_BIGMA,
+    MG_WSGSET_HANK_WADDLE,
 } mgWsgSetIndex_t;
 
-static const mgLeveldef_t leveldef[] = {
-    {.filename           = LEVEL_SELECT_BIN,
-     .timeLimit          = 180,
-     .defaultWsgSetIndex = MG_WSGSET_LEVEL_SELECT,
-     .mainBgmIndex       = MG_BGM_STAGE_SELECT,
-     .bossBgmIndex       = MG_BGM_NULL},
-    {.filename           = LEVEL_02_BIN,
-     .timeLimit          = 180,
-     .defaultWsgSetIndex = MG_WSGSET_KINETIC_DONUT,
-     .mainBgmIndex       = MG_BGM_KINETIC_DONUT,
-     .bossBgmIndex       = MG_BGM_BOSS_SEVER_YAGATA},
-    {.filename           = LEVEL_02_BIN,
-     .timeLimit          = 180,
-     .defaultWsgSetIndex = MG_WSGSET_KINETIC_DONUT,
-     .mainBgmIndex       = MG_BGM_GRIND_PANGOLIN,
-     .bossBgmIndex       = MG_BGM_BOSS_SEVER_YAGATA},
-    {.filename           = LEVEL_02_BIN,
-     .timeLimit          = 180,
-     .defaultWsgSetIndex = MG_WSGSET_KINETIC_DONUT,
-     .mainBgmIndex       = MG_BGM_SEVER_YAGATA,
-     .bossBgmIndex       = MG_BGM_BOSS_SEVER_YAGATA},
-    {.filename           = LEVEL_02_BIN,
-     .timeLimit          = 180,
-     .defaultWsgSetIndex = MG_WSGSET_KINETIC_DONUT,
-     .mainBgmIndex       = MG_BGM_RIP_BARONESS,
-     .bossBgmIndex       = MG_BGM_BOSS_SEVER_YAGATA},
-    {.filename           = LEVEL_02_BIN,
-     .timeLimit          = 180,
-     .defaultWsgSetIndex = MG_WSGSET_KINETIC_DONUT,
-     .mainBgmIndex       = MG_BGM_NULL,
-     .bossBgmIndex       = MG_BGM_BOSS_BIGMA},
-    {.filename           = LEVEL_02_BIN,
-     .timeLimit          = 180,
-     .defaultWsgSetIndex = MG_WSGSET_KINETIC_DONUT,
-     .mainBgmIndex       = MG_BGM_SMASH_GORILLA,
-     .bossBgmIndex       = MG_BGM_BOSS_SEVER_YAGATA},
-    {.filename           = LEVEL_02_BIN,
-     .timeLimit          = 180,
-     .defaultWsgSetIndex = MG_WSGSET_KINETIC_DONUT,
-     .mainBgmIndex       = MG_BGM_DEADEYE_CHIRPZI,
-     .bossBgmIndex       = MG_BGM_BOSS_SEVER_YAGATA},
-    {.filename           = LEVEL_02_BIN,
-     .timeLimit          = 180,
-     .defaultWsgSetIndex = MG_WSGSET_KINETIC_DONUT,
-     .mainBgmIndex       = MG_BGM_GRIND_PANGOLIN,
-     .bossBgmIndex       = MG_BGM_BOSS_SEVER_YAGATA},
-    {.filename           = LEVEL_02_BIN,
-     .timeLimit          = 180,
-     .defaultWsgSetIndex = MG_WSGSET_KINETIC_DONUT,
-     .mainBgmIndex       = MG_BGM_FLARE_GRYFFYN,
-     .bossBgmIndex       = MG_BGM_BOSS_SEVER_YAGATA},
-    {.filename           = LEVEL_02_BIN,
-     .timeLimit          = 180,
-     .defaultWsgSetIndex = MG_WSGSET_KINETIC_DONUT,
-     .mainBgmIndex       = MG_BGM_KINETIC_DONUT,
-     .bossBgmIndex       = MG_BGM_BOSS_SEVER_YAGATA},
-    {.filename           = LEVEL_02_BIN,
-     .timeLimit          = 180,
-     .defaultWsgSetIndex = MG_WSGSET_KINETIC_DONUT,
-     .mainBgmIndex       = MG_BGM_KINETIC_DONUT,
-     .bossBgmIndex       = MG_BGM_BOSS_SEVER_YAGATA},
-    {.filename           = LEVEL_02_BIN,
-     .timeLimit          = 180,
-     .defaultWsgSetIndex = MG_WSGSET_KINETIC_DONUT,
-     .mainBgmIndex       = MG_BGM_KINETIC_DONUT,
-     .bossBgmIndex       = MG_BGM_BOSS_SEVER_YAGATA},
-    {.filename           = LEVEL_02_BIN,
-     .timeLimit          = 180,
-     .defaultWsgSetIndex = MG_WSGSET_KINETIC_DONUT,
-     .mainBgmIndex       = MG_BGM_KINETIC_DONUT,
-     .bossBgmIndex       = MG_BGM_BOSS_SEVER_YAGATA},
-    {.filename           = LEVEL_02_BIN,
-     .timeLimit          = 180,
-     .defaultWsgSetIndex = MG_WSGSET_KINETIC_DONUT,
-     .mainBgmIndex       = MG_BGM_KINETIC_DONUT,
-     .bossBgmIndex       = MG_BGM_BOSS_SEVER_YAGATA},
-    {.filename           = LEVEL_02_BIN,
-     .timeLimit          = 180,
-     .defaultWsgSetIndex = MG_WSGSET_KINETIC_DONUT,
-     .mainBgmIndex       = MG_BGM_KINETIC_DONUT,
-     .bossBgmIndex       = MG_BGM_BOSS_SEVER_YAGATA},
-    {.filename           = LEVEL_02_BIN,
-     .timeLimit          = 180,
-     .defaultWsgSetIndex = MG_WSGSET_KINETIC_DONUT,
-     .mainBgmIndex       = MG_BGM_KINETIC_DONUT,
-     .bossBgmIndex       = MG_BGM_BOSS_SEVER_YAGATA},
-    {.filename           = LEVEL_02_BIN,
-     .timeLimit          = 180,
-     .defaultWsgSetIndex = MG_WSGSET_KINETIC_DONUT,
-     .mainBgmIndex       = MG_BGM_KINETIC_DONUT,
-     .bossBgmIndex       = MG_BGM_BOSS_SEVER_YAGATA},
-};
+/*
+intro gives you nothing
+Kinetic Donut gives you Mic Drop
+Grind Pangolin gives you slide
+Sever Yataga gives you the Plot Armor (increased iframes/damage reduction)
+Trash Man gives you the double jump
+Smash Gorilla gives you the can of salsa/e-tank
+Deadeye Chirpzi gives you charge shot
+Drain Bat gives you the Sure, You Can (uppercut)
+Flare Gryffyn gives you the Reflector*/
+typedef enum
+{
+    MG_DROP_THE_MIC_ABILITY,
+    MG_TROMBONE_SLIDE_ABILITY,
+    MG_PLOT_ARMOR_ABILITY,
+    MG_OBNOXIOUS_NOODLING_ABILITY, // double jump
+    MG_CAN_OF_SALSA_ABILITY,
+    MG_SHOOP_DA_WOOP_ABILITY, // charge shot
+    MG_SURE_YOU_CAN_ABILITY,  // uppercut
+    MG_REFLECTOR_SHIELD_ABILITY,
+} mgAbilities_t;
+
+//==============================================================================
+// Extern Variables
+//==============================================================================
+
+extern const cnfsFileIdx_t MG_BGMS[];
+extern const int MG_1x2_TILE_COLLISION_OFFSETS_IN_PIXELS[];
+extern const int MG_TILE_COLLISION_OFFSETS_1x2_BOTTOM_EDGE[];
+extern const int MG_TILE_COLLISION_OFFSETS_1x2_TOP_EDGE[];
+extern const int MG_TILE_COLLISION_OFFSETS_1x2_RIGHT_EDGE[];
+extern const int MG_TILE_COLLISION_OFFSETS_1x2_LEFT_EDGE[];
+extern const char MG_cheatModeNVSKey[];
+extern const char MG_abilitiesNVSKey[];
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_1x2_bottomEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_1x2_topEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_1x2_rightEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_1x2_leftEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_1x2_topEdge_dash_slide;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_1x2_rightEdge_dash_slide;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_1x2_leftEdge_dash_slide;
+extern const mg_EntityTileCollider_t entityTileCollider_1x2;
+extern const mg_EntityTileCollider_t entityTileCollider_1x2_dash_slide;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_sever_yataga_bottomEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_sever_yataga_topEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_sever_yataga_rightEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_sever_yataga_leftEdge;
+extern const mg_EntityTileCollider_t entityTileCollider_sever_yataga;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_smash_gorilla_bottomEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_smash_gorilla_topEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_smash_gorilla_rightEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_smash_gorilla_leftEdge;
+extern const mg_EntityTileCollider_t entityTileCollider_smash_gorilla;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_grind_pangolin_bottomEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_grind_pangolin_topEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_grind_pangolin_rightEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_grind_pangolin_leftEdge;
+extern const mg_EntityTileCollider_t entityTileCollider_grind_pangolin;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_grind_pangolin_rolling_bottomEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_grind_pangolin_rolling_topEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_grind_pangolin_rolling_rightEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_grind_pangolin_rolling_leftEdge;
+extern const mg_EntityTileCollider_t entityTileCollider_grind_pangolin_rolling;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_drain_bat_bottomEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_drain_bat_topEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_drain_bat_rightEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_drain_bat_leftEdge;
+extern const mg_EntityTileCollider_t entityTileCollider_drain_bat;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_kinetic_donut_bottomEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_kinetic_donut_topEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_kinetic_donut_rightEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_kinetic_donut_leftEdge;
+extern const mg_EntityTileCollider_t entityTileCollider_kinetic_donut;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_flare_gryffyn_bottomEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_flare_gryffyn_topEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_flare_gryffyn_rightEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_flare_gryffyn_leftEdge;
+extern const mg_EntityTileCollider_t entityTileCollider_flare_gryffyn;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_flare_gryffyn_jumping_bottomEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_flare_gryffyn_jumping_topEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_flare_gryffyn_jumping_rightEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_flare_gryffyn_jumping_leftEdge;
+extern const mg_EntityTileCollider_t entityTileCollider_flare_gryffyn_jumping;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_deadeye_chirpzi_bottomEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_deadeye_chirpzi_topEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_deadeye_chirpzi_rightEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_deadeye_chirpzi_leftEdge;
+extern const mg_EntityTileCollider_t entityTileCollider_deadeye_chirpzi;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_trash_man_bottomEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_trash_man_topEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_trash_man_rightEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_trash_man_leftEdge;
+extern const mg_EntityTileCollider_t entityTileCollider_trash_man;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_bigma_bottomEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_bigma_topEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_bigma_rightEdge;
+extern const mg_EntityTileCollisionPointList_t mgTileCollisionOffsets_bigma_leftEdge;
+extern const mg_EntityTileCollider_t entityTileCollider_bigma;
+extern const paletteColor_t bgGradientGray[];
+extern const paletteColor_t bgGradientPurple[];
+extern const paletteColor_t bgGradientBlue[];
+extern const paletteColor_t bgGradientCyan[];
+extern const paletteColor_t bgGradientGreen[];
+extern const paletteColor_t bgGradientYellow[];
+extern const paletteColor_t bgGradientOrange[];
+extern const paletteColor_t bgGradientRed[];
+extern const paletteColor_t bgGradientMenu[];
+extern const mgLeveldef_t leveldef[];
+
+// platformerTrophies array is defined in megaPulseEx.c to avoid multiple definitions
+extern const trophyData_t platformerTrophies[];
+
+//==============================================================================
+// Function Declarations
+//==============================================================================
+
+extern void goToReadyScreen(void);
+extern void startCreditMusic(void);
+extern void startPostFightMusic(void);
+extern void startSawtoothsThemeMusic(void);
+extern void queueTrophy(void);
+extern void startHankMusic(void);
+extern void startTrashManMusic(void);
+extern void getTrashManTrophy(void);
+extern void initBossFight(void);
+extern void startMegajamMusic(void);
+extern void stopMusic(void);
+extern void loseCanOfSalsa(void);
 
 #endif

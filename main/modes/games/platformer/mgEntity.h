@@ -71,9 +71,20 @@ typedef enum
     ENTITY_BOUNCE_PAD_DIAGONAL,
     ENTITY_LIFE_REFILL_SMALL,
     ENTITY_LIFE_REFILL_LARGE,
-    ENTITY_BOSS_TEST,
+    ENTITY_BOSS_SEVER_YATAGA,
     ENTITY_MIXTAPE,
-    ENTITY_BOSS_DOOR
+    ENTITY_BOSS_DOOR,
+    ENTITY_SHRUBBLE_LV4,
+    ENTITY_BOSS_SMASH_GORILLA,
+    ENTITY_BOSS_GRIND_PANGOLIN,
+    ENTITY_BOSS_DRAIN_BAT,
+    ENTITY_BOSS_KINETIC_DONUT,
+    ENTITY_BOSS_TRASH_MAN,
+    ENTITY_BOSS_FLARE_GRYFFYN,
+    ENTITY_BOSS_DEADEYE_CHIRPZI,
+    ENTITY_BOSS_BIGMA,
+    ENTITY_BOSS_HANK_WADDLE,
+    ENTITY_EXTRA_LIFE,
 } mgEntityIndex_t;
 
 typedef enum
@@ -82,8 +93,22 @@ typedef enum
     MG_PL_ST_DASHING,
     MG_PL_ST_MIC_DROP,
     MG_PL_ST_UPPERCUT,
-    MG_PL_ST_SLIDE
+    MG_PL_ST_HURT,
+    MG_PL_ST_SHIELD
 } mgPlayerState_t;
+
+typedef enum
+{
+    CRAWLER_NONE,
+    CRAWLER_TOP_TO_RIGHT,
+    CRAWLER_RIGHT_TO_BOTTOM,
+    CRAWLER_BOTTOM_TO_LEFT,
+    CRAWLER_LEFT_TO_TOP,
+    CRAWLER_TOP_TO_LEFT,
+    CRAWLER_RIGHT_TO_TOP,
+    CRAWLER_BOTTOM_TO_RIGHT,
+    CRAWLER_LEFT_TO_BOTTOM
+} crawlerMoveState_t;
 
 //==============================================================================
 // Structs
@@ -117,6 +142,11 @@ struct mgEntity_t
     int16_t xDamping;
     int16_t yDamping;
 
+    /* Generic special purpose fields used by some entities for boss waves etc. */
+    uint8_t special1;
+    int16_t specialX;
+    int16_t specialN;
+
     bool gravityEnabled;
     int16_t gravity;
     bool falling;
@@ -124,7 +154,9 @@ struct mgEntity_t
     uint8_t spriteIndex;
     bool spriteFlipHorizontal;
     bool spriteFlipVertical;
+    int16_t spriteRotateAngle;
     uint8_t animationTimer;
+    uint8_t doubleJumpAnimTimer; /* counts down frames for the double-jump animation */
 
     mgTilemap_t* tilemap;
     mgGameData_t* gameData;
@@ -145,6 +177,7 @@ struct mgEntity_t
     int16_t hp;
     int8_t invincibilityFrames;
     uint16_t scoreValue;
+    // uint16_t damageValue;
 
     mgEntitySpawnData_t* spawnData;
     mgEntity_t* linkedEntity;
@@ -175,9 +208,14 @@ void updateHitBlock(mgEntity_t* self);
 void mg_moveEntityWithTileCollisions(mgEntity_t* self);
 void mg_moveEntityWithTileCollisions3(mgEntity_t* self);
 bool mg_canWallJump(mgEntity_t* self);
+bool mg_canExitDashSlide(mgEntity_t* self);
 void defaultFallOffTileHandler(mgEntity_t* self);
 
+void mg_playerFallOffTileHandler(mgEntity_t* self);
+
 void despawnWhenOffscreen(mgEntity_t* self);
+
+void mg_bossRushLogic(mgEntity_t* self);
 
 void mg_destroyEntity(mgEntity_t* self, bool respawn);
 
@@ -195,6 +233,7 @@ void mg_dummyCollisionHandler(mgEntity_t* self, mgEntity_t* other);
 
 bool mg_playerTileCollisionHandler(mgEntity_t* self, uint8_t tileId, uint8_t tx, uint8_t ty, uint8_t direction);
 bool mg_enemyTileCollisionHandler(mgEntity_t* self, uint8_t tileId, uint8_t tx, uint8_t ty, uint8_t direction);
+bool mg_trashManTileCollisionHandler(mgEntity_t* self, uint8_t tileId, uint8_t tx, uint8_t ty, uint8_t direction);
 bool mg_dummyTileCollisionHandler(mgEntity_t* self, uint8_t tileId, uint8_t tx, uint8_t ty, uint8_t direction);
 
 void dieWhenFallingOffScreen(mgEntity_t* self);
@@ -208,8 +247,11 @@ void updateScrollLockDown(mgEntity_t* self);
 void updateScrollUnlock(mgEntity_t* self);
 
 void updateEntityDead(mgEntity_t* self);
+void updateBossDead(mgEntity_t* self);
+void updatePlayerDead(mgEntity_t* self);
 
 void updatePowerUp(mgEntity_t* self);
+void updateExtraLife(mgEntity_t* self);
 void update1up(mgEntity_t* self);
 void updateWarp(mgEntity_t* self);
 
@@ -247,6 +289,10 @@ void waveBallOverlapTileHandler(mgEntity_t* self, uint8_t tileId, uint8_t tx, ui
 void powerUpCollisionHandler(mgEntity_t* self, mgEntity_t* other);
 void killPlayer(mgEntity_t* self);
 void mg_defaultEntityDrawHandler(mgEntity_t* self);
+void mg_smashGorillaProjectileDrawHandler(mgEntity_t* self);
+void mg_hankDrawHandler(mgEntity_t* self);
+
+void mg_playerDrawHandler(mgEntity_t* self);
 
 void mg_destroyShot(mgEntity_t* self);
 
@@ -262,6 +308,32 @@ void mg_updateBossDoor(mgEntity_t* self);
 
 void mg_bossDoorCollisionHandler(mgEntity_t* self, mgEntity_t* other);
 
-void mg_updateBossTest(mgEntity_t* self);
+void mg_updateBossSeverYataga(mgEntity_t* self);
+
+void mg_updateBossSmashGorilla(mgEntity_t* self);
+
+void mg_updateBossGrindPangolin(mgEntity_t* self);
+
+void mg_updateBossDrainBat(mgEntity_t* self);
+
+void mg_updateBossKineticDonut(mgEntity_t* self);
+
+void mg_updateBossTrashMan(mgEntity_t* self);
+
+void mg_updateBossFlareGryffyn(mgEntity_t* self);
+
+void mg_updateBossDeadeyeChirpzi(mgEntity_t* self);
+
+void mg_updateBossBigma(mgEntity_t* self);
+
+void mg_updateBossHankWaddle(mgEntity_t* self);
+
+void mg_updateShrubbleLv4(mgEntity_t* self);
+
+void crawlerSetMoveState(mgEntity_t* self, uint8_t state);
+
+uint8_t mg_crawlerGettInitialMoveState(int16_t angle, bool counterclockwise);
+
+void mg_updateSpikyMcGee(mgEntity_t* self);
 
 #endif

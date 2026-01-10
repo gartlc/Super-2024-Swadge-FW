@@ -11,6 +11,7 @@
 // #include "swadge2024.h"
 #include "palette.h"
 #include "mgSoundManager.h"
+#include "cutscene.h"
 
 //==============================================================================
 // Constants
@@ -36,26 +37,32 @@ typedef struct
     uint8_t lives;
     uint8_t coins;
     int16_t countdown;
+    bool pauseCountdown; // Pause the countdown after boss is defeated to allow breathing room to try newly unlocked
+                         // ability, and to avoid failure after winning the fight.
     uint16_t frameCount;
 
     uint8_t level;
+
+    uint8_t checkpointLevel;
+    uint16_t checkpointSpawnIndex;
 
     uint16_t combo;
     int16_t comboTimer;
     uint32_t comboScore;
 
+    uint8_t enemiesKilled;
     bool extraLifeCollected;
-    uint8_t checkpoint;
     uint8_t levelDeaths;
     uint8_t initialHp;
 
     led_t leds[CONFIG_NUM_LEDS];
 
-    paletteColor_t bgColor;
+    const paletteColor_t* bgColors;
 
     char initials[3];
     uint8_t rank;
     bool debugMode;
+    bool customLevel;
 
     int8_t changeBgm;
     uint8_t currentBgm;
@@ -64,6 +71,19 @@ typedef struct
     uint32_t inGameTimer;
 
     mgSoundManager_t* soundManager;
+
+    cutscene_t* cutscene;
+
+    bool cheatMode; // True to make pulse invincible
+
+    uint8_t abilities; // Each bit may be 1 for an unlocked ability.
+
+    bool kineticSkipped;
+
+    int8_t trophyEarned; // Set from a boss kill, then processed by levelSelect screen. Negative numbers means no trophy
+                         // earned.
+
+    bool canGrabMixtape; // false so that cutscenes can play out before the mixtape activates a level ending.
 } mgGameData_t;
 
 //==============================================================================
@@ -79,6 +99,9 @@ void mg_resetGameDataLeds(mgGameData_t* gameData);
 void mg_updateLedsShowHighScores(mgGameData_t* gameData);
 void mg_updateLedsLevelClear(mgGameData_t* gameData);
 void mg_updateLedsGameClear(mgGameData_t* gameData);
+void mg_updateLedsShoopDaWoopStatus(mgEntityManager_t* entityManager);
+void mg_updateLeds(mgEntityManager_t* entityManager);
+void mg_updateLedsDead(mgGameData_t* gameData);
 void mg_updateLedsGameOver(mgGameData_t* gameData);
 
 #endif

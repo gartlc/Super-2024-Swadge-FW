@@ -160,6 +160,8 @@
  * - coreutil.h: General utilities for system profiling
  * - hdw-usb.h: Learn how to be a USB HID Gamepad
  *     - advanced_usb_control.h: Use USB for application development
+ * - cutscene.h Renders and makes sound effects for character dialogue. Generic enough to use for any game with any
+ * yearly theme.
  *
  * \section espressif_doc Espressif Documentation
  *
@@ -236,6 +238,15 @@
     #define GPIO_BTN_DOWN  GPIO_NUM_4
     #define GPIO_BTN_LEFT  GPIO_NUM_0
     #define GPIO_BTN_RIGHT GPIO_NUM_2
+
+#elif defined(CONFIG_HARDWARE_PULSE)
+    #define GPIO_SAO_1 GPIO_NUM_42 // Flip SAO GPIOs relative to Hotdog
+    #define GPIO_SAO_2 GPIO_NUM_40
+
+    #define GPIO_BTN_UP    GPIO_NUM_0
+    #define GPIO_BTN_DOWN  GPIO_NUM_4
+    #define GPIO_BTN_LEFT  GPIO_NUM_2
+    #define GPIO_BTN_RIGHT GPIO_NUM_1
 #else
     #error "Define what hardware is being built for"
 #endif
@@ -292,14 +303,14 @@ static void dacCallback(uint8_t* samples, int16_t len);
  */
 void app_main(void)
 {
-    // Make sure there isn't a pin conflict
-    if (GPIO_SAO_1 != GPIO_NUM_17)
-    {
 #ifdef CONFIG_DEBUG_OUTPUT_UART_SAO
+    // Make sure there isn't a pin conflict
+    if (GPIO_SAO_2 != GPIO_NUM_18)
+    {
         // Redirect UART if configured and able
-        uart_set_pin(UART_NUM_0, GPIO_SAO_1, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-#endif
+        uart_set_pin(UART_NUM_0, GPIO_SAO_2, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     }
+#endif
 
     // Init NVS. Do this first to get test mode status and crashwrap logs
     initNvs(true);
@@ -416,7 +427,7 @@ void app_main(void)
 
     initLeds(GPIO_NUM_39, ledMirrorGpio, getLedBrightnessSetting());
 
-    initCh32v003(GPIO_SAO_2);
+    initCh32v003(GPIO_SAO_1);
 
     // Initialize optional peripherals, depending on the mode's requests
     initOptionalPeripherals();
@@ -426,7 +437,10 @@ void app_main(void)
     tLastLoopUs                = esp_timer_get_time();
 
     // Initialize system font and trophy-get sound
-    loadFont(IBM_VGA_8_FONT, &sysFont, true);
+    loadFont(IBM_VGA_8_FONT, &sysFont, false);
+
+    // Initialize username settings, must be done before the swadge mode
+    initUsernameSystem();
 
     // Initialize the swadge mode
     if (NULL != cSwadgeMode->fnEnterMode)
@@ -438,9 +452,6 @@ void app_main(void)
         cSwadgeMode->fnEnterMode();
     }
     cSwadgeModeInit = true;
-
-    // Initialize username settings
-    initUsernameSystem();
 
     // Run the main loop, forever
     while (true)

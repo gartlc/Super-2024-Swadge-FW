@@ -25,8 +25,11 @@ void levelSelectInput(void);
 void levelActionInput(void);
 void drawLevelSelectScreen(font_t* font);
 void drawLevelActionScreen(font_t* font);
+void drawLevelInfo(font_t* font);
 void drawPicrossLevelWSG(wsg_t* wsg, int16_t xOff, int16_t yOff, bool highlight);
 void drawPicrossPreviewWindow(wsg_t* wsg);
+
+void checkForTrophyRange(picrossLevelDef_t levels[], int start, int end, int trophyIdx);
 //====
 // Functions
 //====
@@ -61,6 +64,21 @@ void picrossStartLevelSelect(font_t* bigFont, picrossLevelDef_t levels[])
         }
 
         ls->levels[i] = levels[i];
+    }
+
+    // Trophies
+    checkForTrophyRange(levels, 0, 9, 1);   // 10 5x5
+    checkForTrophyRange(levels, 10, 14, 2); // 5 15x6
+    checkForTrophyRange(levels, 15, 19, 3); // 5 15x8
+    checkForTrophyRange(levels, 20, 29, 4); // 10 10x10
+    checkForTrophyRange(levels, 30, 34, 5); // 5 15x10
+    checkForTrophyRange(levels, 35, 38, 6); // 4 15x12
+    checkForTrophyRange(levels, 39, 45, 7); // 7 15x14
+    checkForTrophyRange(levels, 46, 55, 8); // 10 15x15
+
+    if (ls->allLevelsComplete)
+    {
+        trophyUpdate(&trophyPicrossModeTrophies[0], 1, true);
     }
 
     readNvs32(picrossHoverLevelIndexKey, &ls->hoverLevelIndex);
@@ -315,14 +333,6 @@ void drawLevelSelectScreen(font_t* font)
     uint8_t s = ls->gridScale; // scale
     uint8_t x;
     uint8_t y;
-    char textBuffer[64];
-
-    // todo: Draw Choose Level Text.
-    drawText(font, c555, "Puzzle", 190, 30);
-    drawText(font, c555, "Select", 190, 60);
-    snprintf(textBuffer, sizeof(textBuffer) - 1, "%d/%d", (int)ls->hoverLevelIndex + 1, (int)PICROSS_LEVEL_COUNT);
-    int16_t t = textWidth(&ls->smallFont, textBuffer) / 2;
-    drawText(&ls->smallFont, c555, textBuffer, TFT_WIDTH - 54 - t, 90);
 
     int start = ls->topVisibleRow * ls->cols;
     int end   = ls->cols * ls->rows;
@@ -384,15 +394,8 @@ void drawLevelSelectScreen(font_t* font)
         }
     }
 
-    if (ls->hoverLevelIndex < PICROSS_LEVEL_COUNT)
-    {
-        // Draw the current level difficulty at the bottom left.
-        //(debug)
-        snprintf(textBuffer, sizeof(textBuffer) - 1, "%" PRIu16 "x%" PRIu16,
-                 (int)ls->levels[ls->hoverLevelIndex].levelWSG.w, (int)ls->levels[ls->hoverLevelIndex].levelWSG.h);
-        t = textWidth(&ls->smallFont, textBuffer) / 2;
-        drawText(&ls->smallFont, c555, textBuffer, TFT_WIDTH - 54 - t, TFT_HEIGHT - 28);
-    }
+    // common header / preview / size text
+    drawLevelInfo(ls->game_font);
 
     //
     // draw level choose input
@@ -440,20 +443,8 @@ void drawLevelActionScreen(font_t* font)
 {
     clearPxTft();
 
-    char textBuffer[64];
-
-    // todo: Draw Choose Level Text.
-    drawText(font, c555, "Puzzle", 190, 30);
-    drawText(font, c555, "Select", 190, 60);
-    snprintf(textBuffer, sizeof(textBuffer) - 1, "%d/%d", (int)ls->hoverLevelIndex + 1, (int)PICROSS_LEVEL_COUNT);
-    int16_t t = textWidth(&ls->smallFont, textBuffer) / 2;
-    drawText(&ls->smallFont, c555, textBuffer, TFT_WIDTH - 54 - t, 90);
-    snprintf(textBuffer, sizeof(textBuffer) - 1, "%" PRIu16 "x%" PRIu16,
-             (int)ls->levels[ls->hoverLevelIndex].levelWSG.w, (int)ls->levels[ls->hoverLevelIndex].levelWSG.h);
-    t = textWidth(&ls->smallFont, textBuffer) / 2;
-    drawText(&ls->smallFont, c555, textBuffer, TFT_WIDTH - 54 - t, TFT_HEIGHT - 28);
-
-    drawPicrossPreviewWindow(&ls->levels[ls->hoverLevelIndex].completedWSG);
+    // draw the common header/preview/size text
+    drawLevelInfo(font);
 
     static const char options[3][14] = {"Appreciate It", "Reset Puzzle", "Back"};
 
@@ -466,6 +457,38 @@ void drawLevelActionScreen(font_t* font)
     }
 
     drawRect(3, 40 + 50 * ls->levelActionIndex, 183, 80 + 50 * ls->levelActionIndex, c445);
+}
+
+void drawLevelInfo(font_t* font)
+{
+    char textBuffer[64];
+    // Header
+    drawText(font, c555, "Puzzle", 190, 30);
+    drawText(font, c555, "Select", 190, 60);
+
+    // index/count at upper-right
+    snprintf(textBuffer, sizeof(textBuffer) - 1, "%d/%d", (int)ls->hoverLevelIndex + 1, (int)PICROSS_LEVEL_COUNT);
+    int16_t t = textWidth(&ls->smallFont, textBuffer) / 2;
+    drawText(&ls->smallFont, c555, textBuffer, TFT_WIDTH - 54 - t, 90);
+
+    // level size at bottom-right (only if valid hover index)
+    if (ls->hoverLevelIndex < PICROSS_LEVEL_COUNT)
+    {
+        snprintf(textBuffer, sizeof(textBuffer) - 1, "%" PRIu16 "x%" PRIu16,
+                 (int)ls->levels[ls->hoverLevelIndex].levelWSG.w, (int)ls->levels[ls->hoverLevelIndex].levelWSG.h);
+        t = textWidth(&ls->smallFont, textBuffer) / 2;
+        drawText(&ls->smallFont, c555, textBuffer, TFT_WIDTH - 54 - t, TFT_HEIGHT - 28);
+
+        // Draw preview window for the hovered level (completed or unknown)
+        if (ls->levels[ls->hoverLevelIndex].completed)
+        {
+            drawPicrossPreviewWindow(&ls->levels[ls->hoverLevelIndex].completedWSG);
+        }
+        else
+        {
+            drawPicrossPreviewWindow(&ls->unknownPuzzle);
+        }
+    }
 }
 
 void picrossLevelSelectButtonCb(buttonEvt_t* evt)
@@ -588,5 +611,21 @@ void drawPicrossPreviewWindow(wsg_t* wsg)
             };
             drawBox(box, wsg->px[(j * wsg->w) + i], true, 0);
         }
+    }
+}
+
+void checkForTrophyRange(picrossLevelDef_t levels[], int start, int end, int trophyIdx)
+{
+    bool trigger = true;
+    for (int idx = start; idx < end + 1; idx++)
+    {
+        if (!levels[idx].completed)
+        {
+            trigger = false;
+        }
+    }
+    if (trigger)
+    {
+        trophyUpdate(&trophyPicrossModeTrophies[trophyIdx], 1, true);
     }
 }

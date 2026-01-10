@@ -2,7 +2,7 @@
 #include "cosCrunch.h"
 
 static void ccmgSewInitMicrogame(void);
-static void ccmgSewDestroyMicrogame(void);
+static void ccmgSewDestroyMicrogame(bool successful);
 static void ccmgSewMainLoop(int64_t elapsedUs, uint64_t timeRemainingUs, float timeScale, cosCrunchMicrogameState state,
                             buttonEvt_t buttonEvts[], uint8_t buttonEvtCount);
 static void ccmgSewDrawThreadBezier(int16_t startX, int16_t startY, int16_t endX, int16_t endY);
@@ -75,7 +75,7 @@ static void ccmgSewInitMicrogame(void)
     ccmgsew->wsg.canvas.w  = MAX(ccmgsew->wsg.threadKnot.w, ccmgsew->wsg.threadKnot.h);
     ccmgsew->wsg.canvas.h  = ccmgsew->wsg.canvas.w;
     ccmgsew->wsg.canvas.px = (paletteColor_t*)heap_caps_malloc_tag(
-        sizeof(paletteColor_t) * ccmgsew->wsg.canvas.w * ccmgsew->wsg.canvas.h, MALLOC_CAP_8BIT, "wsg");
+        sizeof(paletteColor_t) * ccmgsew->wsg.canvas.w * ccmgsew->wsg.canvas.h, MALLOC_CAP_8BIT, "sew_mg");
     for (uint32_t i = 0; i < ccmgsew->wsg.canvas.w * ccmgsew->wsg.canvas.h; i++)
     {
         ccmgsew->wsg.canvas.px[i] = cTransparent;
@@ -99,9 +99,9 @@ static void ccmgSewInitMicrogame(void)
     }
 }
 
-static void ccmgSewDestroyMicrogame(void)
+static void ccmgSewDestroyMicrogame(bool successful)
 {
-    if (ccmgsew->currentStep < BUTTON_PRESS_COUNT)
+    if (!successful)
     {
         uint16_t rotation = esp_random() % 360;
         drawToCanvasTint(ccmgsew->wsg.canvas, ccmgsew->wsg.threadKnot,
@@ -139,6 +139,8 @@ static void ccmgSewMainLoop(int64_t elapsedUs, uint64_t timeRemainingUs, float t
         if (pressedButton == ccmgsew->stitchType->buttonOrder[ccmgsew->currentStep])
         {
             ccmgsew->currentStep++;
+            midiNoteOn(globalMidiPlayerGet(MIDI_SFX), 9, SIDE_STICK, 0x7f);
+
             if (ccmgsew->currentStep == BUTTON_PRESS_COUNT)
             {
                 cosCrunchMicrogameResult(true);

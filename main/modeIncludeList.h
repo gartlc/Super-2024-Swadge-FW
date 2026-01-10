@@ -31,6 +31,7 @@
 
 #include "accelTest.h"
 #include "artillery.h"
+#include "atrium.h"
 #include "bouncy.h"
 #include "canvas.h"
 #include "colorchord.h"
@@ -38,6 +39,7 @@
 #include "dance.h"
 #include "danceNetwork.h"
 #include "factoryTest.h"
+#include "faceFinder.h"
 #include "gamepad.h"
 #include "introMode.h"
 #include "jukebox.h"
@@ -54,6 +56,7 @@
 #include "sequencerMode.h"
 #include "sonaTest.h"
 #include "swadgedoku.h"
+#include "swsnCreator.h"
 #include "swadgeIt.h"
 #include "swadgePassTest.h"
 #include "swadgetamatone.h"
@@ -62,6 +65,7 @@
 #include "trophyTest.h"
 #include "tunernome.h"
 #include "visualizer.h"
+#include "cipher.h"
 
 //==============================================================================
 // Function Prototypes

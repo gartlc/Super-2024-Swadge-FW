@@ -307,7 +307,7 @@ const midiTimbre_t mmx011Vibraphone = {
     .envelope = {
         .attackTime = SECONDS_CONV(0, 1000), // 1ms
         // .releaseTime = SECONDS_CONV(2, 70530), // 2.070530s
-        .releaseTime = SECONDS_CONV(0, 675300), // ~2.070530s / 4
+        .releaseTime = 0,
         .sustainVol = 127,
     },
 };
@@ -666,7 +666,7 @@ const noteSampleMap_t mmxDrumSampleMap[] = {
             .attackTime = SECONDS_CONV(0, 1000),
             .decayTime = SECONDS_CONV(0, 771105u),
             .sustainVol = 0,
-            .releaseTime = SECONDS_CONV(0, 771105u),
+            .releaseTime = 0,
             // TODO: implement hold
             //.holdTime = SECONDS_CONV(0, 84008)
         },
@@ -687,7 +687,7 @@ const noteSampleMap_t mmxDrumSampleMap[] = {
             .attackTime = SECONDS_CONV(0, 1000),
             .decayTime = SECONDS_CONV(2, 64500u),
             .sustainVol = 0,
-            .releaseTime = SECONDS_CONV(0, 66125u),
+            .releaseTime = SECONDS_CONV(0, 1625u),
             // no hold here
         },
     },
@@ -705,9 +705,8 @@ const noteSampleMap_t mmxDrumSampleMap[] = {
         },
         {
             .attackTime = SECONDS_CONV(0, 1000),
-            .decayTime = SECONDS_CONV(1, 224170),
-            // release is 1/2 of decay
-            .releaseTime = SECONDS_CONV(0, 612085),
+            .decayTime = SECONDS_CONV(1, 224170u),
+            .releaseTime = SECONDS_CONV(0, 28021u),
             .sustainVol = 0,
         },
     },
@@ -769,7 +768,7 @@ const midiTimbre_t* const mmxTimbres[] = {
 };
 
 const uint8_t mmxTimbreMap[] = {
-    11, 17, 24, 29, 30, 36, 38, 48, 50, 62, 80, 81, 82, 83, 119,
+    11, 17, 24, 29, 30, 36, 38, 48, 55, 62, 80, 81, 82, 83, 119,
 };
 
 const size_t mmxTimbreCount = sizeof(mmxTimbres) / sizeof(*mmxTimbres);

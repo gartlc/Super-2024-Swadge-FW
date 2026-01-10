@@ -161,7 +161,7 @@ struct
         .slv         = _55_RAINBOW_SLV_WSG,
         .marqueeFact = "MAGPIE nest, new in 2025, hosts several events to contextualize marginalized groups at "
                        "MAGFest. Not just for LGBTQIA+ communities, but also people of color, parents, disabled folks, "
-                       "women, neurodivergence, and more.",
+                       "women, neurodivergency, and more.",
     },
     {
         .name        = "triangle",
@@ -370,7 +370,7 @@ struct
         .name        = "big bug",
         .pzl         = EF_BIGBUG_PZL_WSG,
         .slv         = EF_BIGBUG_SLV_WSG,
-        .marqueeFact = "Produced by James Albracht for the 2025 hotdog swadge with art from gplord, kaitie, "
+        .marqueeFact = "Produced by James Albracht for the 2025 hotdog swadge with art from gplord, kaitie, Nathan, "
                        "and music from newmajoe, and livingston rampey : Dr. Ovo Garbotnik fights hordes of giant "
                        "bugs in a garbage landfill loosely inspired by Dig Dug and Helldivers 2.",
     },
@@ -409,7 +409,7 @@ struct
         .slv  = EF_SWADGEHERO_SLV_WSG,
         .marqueeFact
         = "Swadge Hero from the 2025 hotdog swadge made by gelakinetic and many volunteer composers : A rhythm "
-          "game showing off the new new audio capabilities.",
+          "game showing off the new audio capabilities.",
     },
     {
         .name        = "ultimate ttt",
@@ -428,7 +428,7 @@ struct
         .name        = "double bass",
         .pzl         = FF_DOUBLEBASS_PZL_WSG,
         .slv         = FF_DOUBLEBASS_SLV_WSG,
-        .marqueeFact = "The Magfest Community Orchestra features over 200 volunteer musicians (including choir)",
+        .marqueeFact = "The Magfest Community Orchestra features over 200 volunteer musicians.",
     },
     {
         .name = "drum",
@@ -444,7 +444,7 @@ struct
         .marqueeFact = "We're gonna need a bigger Holy.",
     },
     {
-        .name        = "pslogo",
+        .name        = "ps logo",
         .pzl         = FF_PSLOGO_PZL_WSG,
         .slv         = FF_PSLOGO_SLV_WSG,
         .marqueeFact = "You are now hearing the PS1 start-up jingle in your head.",
@@ -456,7 +456,7 @@ struct
         .marqueeFact = "Newmajoe's instrument of choice.",
     },
     {
-        .name        = "sfclogo",
+        .name        = "sfc logo",
         .pzl         = FF_SFCLOGO_PZL_WSG,
         .slv         = FF_SFCLOGO_SLV_WSG,
         .marqueeFact = "YOU ARE A SUPER PLAYER!!",
@@ -481,6 +481,95 @@ struct
     },
 };
 
+const trophyData_t trophyPicrossModeTrophies[] = {
+    {
+        .title       = "I missed my flight home",
+        .description = "Solved all picross puzzles",
+        .image       = NO_IMAGE_SET,
+        .type        = TROPHY_TYPE_TRIGGER,
+        .difficulty  = TROPHY_DIFF_EXTREME,
+        .maxVal      = 1, // For trigger type, set to one
+    },
+    {
+        .title       = "Understood the puzzle mechanics",
+        .description = "Solved all 5x5 Puzzles",
+        .image       = NO_IMAGE_SET,
+        .type        = TROPHY_TYPE_TRIGGER,
+        .difficulty  = TROPHY_DIFF_EASY,
+        .maxVal      = 1, // For trigger type, set to one
+    },
+    {
+        .title       = "A slim margin",
+        .description = "Solved all 15x6 Puzzles",
+        .image       = NO_IMAGE_SET,
+        .type        = TROPHY_TYPE_TRIGGER,
+        .difficulty  = TROPHY_DIFF_EASY,
+        .maxVal      = 1, // For trigger type, set to one
+    },
+    {
+        .title       = "1.875 : 1",
+        .description = "Solved all 15x8 Puzzles",
+        .image       = NO_IMAGE_SET,
+        .type        = TROPHY_TYPE_TRIGGER,
+        .difficulty  = TROPHY_DIFF_MEDIUM,
+        .maxVal      = 1, // For trigger type, set to one
+    },
+    {
+        .title       = "1 hectoblocks",
+        .description = "Solved all 10x10 Puzzles",
+        .image       = NO_IMAGE_SET,
+        .type        = TROPHY_TYPE_TRIGGER,
+        .difficulty  = TROPHY_DIFF_MEDIUM,
+        .maxVal      = 1, // For trigger type, set to one
+    },
+    {
+        .title       = "This is getting ridiculous",
+        .description = "Solved all 15x10 Puzzles",
+        .image       = NO_IMAGE_SET,
+        .type        = TROPHY_TYPE_TRIGGER,
+        .difficulty  = TROPHY_DIFF_MEDIUM,
+        .maxVal      = 1, // For trigger type, set to one
+    },
+
+    {
+        .title       = "Puzzles for ants",
+        .description = "Solved all 15x12 Puzzles",
+        .image       = NO_IMAGE_SET,
+        .type        = TROPHY_TYPE_TRIGGER,
+        .difficulty  = TROPHY_DIFF_HARD,
+        .maxVal      = 1, // For trigger type, set to one
+    },
+    {
+        .title       = "Slightly assymetrical",
+        .description = "Solved all 15x14 Puzzles",
+        .image       = NO_IMAGE_SET,
+        .type        = TROPHY_TYPE_TRIGGER,
+        .difficulty  = TROPHY_DIFF_HARD,
+        .maxVal      = 1, // For trigger type, set to one
+    },
+    {
+        .title       = "Impromptu eye exam",
+        .description = "Solved all 15x15 Puzzles",
+        .image       = NO_IMAGE_SET,
+        .type        = TROPHY_TYPE_TRIGGER,
+        .difficulty  = TROPHY_DIFF_EXTREME,
+        .maxVal      = 1, // For trigger type, set to one
+    },
+};
+
+const trophySettings_t trophyPicrossModeTrophySettings = {
+    .drawFromBottom   = false,
+    .staticDurationUs = DRAW_STATIC_US * 2,
+    .slideDurationUs  = DRAW_SLIDE_US,
+    .namespaceKey     = str_picrossTitle,
+};
+
+const trophyDataList_t trophyPicrossModeData = {
+    .settings = &trophyPicrossModeTrophySettings,
+    .list     = trophyPicrossModeTrophies,
+    .length   = ARRAY_SIZE(trophyPicrossModeTrophies),
+};
+
 swadgeMode_t modePicross = {
     .modeName                 = str_picrossTitle,
     .wifiMode                 = NO_WIFI,
@@ -498,7 +587,7 @@ swadgeMode_t modePicross = {
     .fnAdvancedUSB            = NULL,
     .fnDacCb                  = NULL,
     .fnAddToSwadgePassPacket  = NULL,
-    .trophyData               = NULL,
+    .trophyData               = &trophyPicrossModeData,
 };
 
 picrossMenu_t* pm;
@@ -604,7 +693,7 @@ void picrossExitMode(void)
                               // everything), so lets call it now
     deinitMenu(pm->menu);
     deinitMenuMegaRenderer(pm->renderer);
-    // p2pDeinit(&jm->p2p);
+    // p2pDeinit(&jm->p2p, true);
     freeFont(&(pm->mmFont));
     heap_caps_free(pm);
 }

@@ -14,6 +14,7 @@
 #include "hashMap.h"
 #include "mgEntitySpawnData.h"
 #include "mega_pulse_ex_typedef.h"
+#include "hdw-nvs.h"
 
 #include "cnfs.h"
 
@@ -164,11 +165,21 @@ void mg_scrollTileMap(mgTilemap_t* tilemap, int16_t x, int16_t y)
     }
 }
 
-bool mg_loadMapFromFile(mgTilemap_t* tilemap, cnfsFileIdx_t name)
+bool mg_loadMapFromFile(mgTilemap_t* tilemap, cnfsFileIdx_t name, mgEntityManager_t* entityManager)
 {
     if (tilemap->entitySpawns != NULL)
     {
         heap_caps_free(tilemap->entitySpawns);
+        tilemap->entitySpawns = NULL;
+    }
+
+    // Unlink all entity spawnData after entitySpawns is free'd
+    if (entityManager->entities)
+    {
+        for (uint8_t i = 0; i < MAX_ENTITIES; i++)
+        {
+            entityManager->entities[i].spawnData = NULL;
+        }
     }
 
     if (tilemap->entitySpawnMap.count > 0)
@@ -179,10 +190,33 @@ bool mg_loadMapFromFile(mgTilemap_t* tilemap, cnfsFileIdx_t name)
     if (tilemap->map != NULL)
     {
         heap_caps_free(tilemap->map);
+        tilemap->map = NULL;
     }
 
-    size_t sz;
-    uint8_t* buf = cnfsReadFile(name, &sz, false);
+    uint8_t* buf = NULL;
+    ESP_LOGE("MAP", "Loading %i", name);
+
+    if (name == -69)
+    {
+        size_t sz;
+        if (readNvsBlob("user_level", NULL, &sz))
+        {
+            buf = heap_caps_malloc(sz, MALLOC_CAP_8BIT);
+
+            if (NULL != buf)
+            {
+                if (readNvsBlob("user_level", buf, &sz))
+                {
+                    ESP_LOGE("MAP", "Loading user level...");
+                }
+            }
+        }
+    }
+    else
+    {
+        uint32_t sz;
+        buf = readHeatshrinkFile(name, &sz, false);
+    }
 
     if (NULL == buf)
     {
@@ -226,6 +260,7 @@ bool mg_loadMapFromFile(mgTilemap_t* tilemap, cnfsFileIdx_t name)
         for (uint32_t i = iterator; i < iterator + (numEntitySpawns * 16); i += 16)
         {
             mgEntitySpawnData_t* entitySpawn = &(tilemap->entitySpawns[subiterator]);
+            entitySpawn->id                  = subiterator;
             entitySpawn->spawnable           = true;
             entitySpawn->respawnable         = true;
             entitySpawn->type                = buf[i];
@@ -234,8 +269,7 @@ bool mg_loadMapFromFile(mgTilemap_t* tilemap, cnfsFileIdx_t name)
             entitySpawn->xOffsetInPixels     = buf[i + 3];
             entitySpawn->yOffsetInPixels     = buf[i + 4];
             entitySpawn->flags               = buf[i + 5];
-            entitySpawn->special0            = buf[i + 6];
-            entitySpawn->special1            = buf[i + 7];
+            entitySpawn->spriteRotateAngle   = (buf[i + 7] << 8) + buf[i + 6];
             entitySpawn->special2            = buf[i + 8];
             entitySpawn->special3            = buf[i + 9];
             entitySpawn->special4            = buf[i + 10];
@@ -246,9 +280,8 @@ bool mg_loadMapFromFile(mgTilemap_t* tilemap, cnfsFileIdx_t name)
             uint16_t linkedEntitySpawnIndex = (buf[i + 15] << 8) + buf[i + 14];
 
             ESP_LOGE("TEST", "Entity #%i: type %i", subiterator, entitySpawn->type);
-            ESP_LOGE("TEST", "specials %i %i %i %i %i %i %i %i", entitySpawn->special0, entitySpawn->special1,
-                     entitySpawn->special2, entitySpawn->special3, entitySpawn->special4, entitySpawn->special5,
-                     entitySpawn->special6, entitySpawn->special7);
+            ESP_LOGE("TEST", "specials 2-7: %i %i %i %i %i %i", entitySpawn->special2, entitySpawn->special3,
+                     entitySpawn->special4, entitySpawn->special5, entitySpawn->special6, entitySpawn->special7);
 
             if (linkedEntitySpawnIndex == 0xffff)
             {
@@ -309,15 +342,83 @@ void mg_tileSpawnEntity(mgTilemap_t* tilemap, uint8_t objectIndex, uint8_t tx, u
 
 void mg_hashSpawnEntity(mgEntityManager_t* entityManager, mgEntitySpawnData_t* entitySpawnData)
 {
-    mgEntity_t* entityCreated
-        = mg_createEntity(entityManager, entitySpawnData->type,
-                          (entitySpawnData->tx << MG_TILESIZE_IN_POWERS_OF_2) + entitySpawnData->xOffsetInPixels,
-                          (entitySpawnData->ty << MG_TILESIZE_IN_POWERS_OF_2) + entitySpawnData->yOffsetInPixels);
+    // That's dumb, the other offset is unsinged.
+    int16_t actualXOffset = 0;
+    int16_t actualYOffset = 0;
+    if (entityManager->playerEntity != NULL && entitySpawnData->type == ENTITY_BOSS_SEVER_YATAGA)
+    {
+        switch (entityManager->playerEntity->gameData->level)
+        {
+            case 1:
+            {
+                entitySpawnData->type = ENTITY_BOSS_KINETIC_DONUT;
+                actualYOffset         = -5;
+                break;
+            }
+            case 2:
+            {
+                entitySpawnData->type = ENTITY_BOSS_GRIND_PANGOLIN;
+                actualYOffset         = -10;
+                break;
+            }
+            case 4:
+            {
+                entitySpawnData->type = ENTITY_BOSS_TRASH_MAN;
+                actualYOffset -= 100;
+                break;
+            }
+            case 5:
+            {
+                entitySpawnData->type = ENTITY_BOSS_BIGMA;
+                actualYOffset         = -20;
+                break;
+            }
+            case 6:
+            {
+                entitySpawnData->type = ENTITY_BOSS_SMASH_GORILLA;
+                actualYOffset         = -10;
+                break;
+            }
+            case 7:
+            {
+                entitySpawnData->type = ENTITY_BOSS_DEADEYE_CHIRPZI;
+                actualYOffset         = -10;
+                break;
+            }
+            case 8:
+            {
+                entitySpawnData->type = ENTITY_BOSS_DRAIN_BAT;
+                actualYOffset         = -10;
+                break;
+            }
+            case 9:
+            {
+                entitySpawnData->type = ENTITY_BOSS_FLARE_GRYFFYN;
+                actualYOffset         = -10;
+                break;
+            }
+            case 10:
+            {
+                entitySpawnData->type = ENTITY_BOSS_BIGMA;
+                actualYOffset         = -20;
+                break;
+            }
+            default:
+            {
+                break;
+            }
+        }
+    }
+    mgEntity_t* entityCreated = mg_createEntity(
+        entityManager, entitySpawnData->type,
+        (entitySpawnData->tx << MG_TILESIZE_IN_POWERS_OF_2) + entitySpawnData->xOffsetInPixels + actualXOffset,
+        (entitySpawnData->ty << MG_TILESIZE_IN_POWERS_OF_2) + entitySpawnData->yOffsetInPixels + actualYOffset);
 
     if (entityCreated != NULL)
     {
         entityCreated->spriteFlipHorizontal = entitySpawnData->flags & 0b1;
         entityCreated->spriteFlipVertical   = entitySpawnData->flags & 0b10;
+        entityCreated->spriteRotateAngle    = entitySpawnData->spriteRotateAngle;
 
         entityCreated->spawnData = entitySpawnData;
 
@@ -377,6 +478,24 @@ bool mg_isSolid(uint8_t tileId)
     }
 }
 
+bool mg_isSolid_enemy(uint8_t tileId)
+{
+    switch (tileId)
+    {
+        case MG_TILE_EMPTY ... MG_TILE_UNUSED_29:
+            return false;
+            break;
+        case MG_TILE_INVISIBLE_BLOCK ... MG_TILE_SOLID_VISIBLE_INTERACTIVE_9F:
+            return true;
+            break;
+        case MG_TILE_NONSOLID_VISIBLE_INTERACTIVE_A6: // Crumble block
+            return true;
+            break;
+        default:
+            return false;
+    }
+}
+
 // bool isInteractive(uint8_t tileId)
 // {
 //     return tileId > MG_TILEINVISIBLE_BLOCK && tileId < MG_TILEBG_GOAL_ZONE;
@@ -404,7 +523,7 @@ bool mg_needsTransparency(uint8_t tileId)
             return true;
         case MG_TILE_BG_CLOUD:
             return false;
-        case MG_TILE_BG_TALL_GRASS ... MG_TILE_BG_MOUNTAIN_R:
+        case MG_TILE_BRICK_BLOCK ... MG_TILE_BG_MOUNTAIN_R:
             return true;
         case MG_TILE_BG_MOUNTAIN ... MG_TILE_BG_METAL:
             return false;
@@ -420,4 +539,5 @@ bool mg_needsTransparency(uint8_t tileId)
 void mg_freeTilemap(mgTilemap_t* tilemap)
 {
     heap_caps_free(tilemap->map);
+    tilemap->map = NULL;
 }

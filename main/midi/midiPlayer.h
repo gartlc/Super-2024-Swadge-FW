@@ -60,6 +60,7 @@
 #include "swSynth.h"
 #include "midiFileParser.h"
 #include "cnfs_image.h"
+#include "hdw-dac.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -92,6 +93,8 @@
 
 /// @brief Convert the sample count to MIDI ticks
 #define SAMPLES_TO_MIDI_TICKS(n, tempo, div) ((int64_t)(n) * 1000000 * (div) / DAC_SAMPLE_RATE_HZ / (tempo))
+
+#define SAMPLES_PER_TICK(tempo, div) ((uint64_t)DAC_SAMPLE_RATE_HZ * (tempo) / div / 1000000)
 
 /// @brief Convert a number of MIDI ticks to the offset of the first sample of the
 #define TICKS_TO_SAMPLES(ticks, tempo, div) ((int64_t)(ticks) * DAC_SAMPLE_RATE_HZ / (1000000) * (tempo) / (div))
@@ -770,6 +773,9 @@ typedef struct
     /// @brief The number of samples elapsed in the playing song
     uint64_t sampleCount;
 
+    /// @brief The current MIDI tick
+    uint32_t tick;
+
     /// @brief The next event in the MIDI file, which occurs after the current time
     midiEvent_t pendingEvent;
 
@@ -787,6 +793,12 @@ typedef struct
 
     /// @brief If true, the playing file will automatically repeat when complete
     bool loop;
+
+    /// @brief If true, all events from the current song have been read and we are waiting for notes to end.
+    bool songEnding;
+
+    /// @brief Force a check for MIDI events on the next sample
+    bool forceCheckEvents;
 } midiPlayer_t;
 
 /**
@@ -1086,7 +1098,7 @@ void globalMidiPlayerFillBuffer(uint8_t* samples, int16_t len);
 void globalMidiPlayerPlaySong(midiFile_t* song, uint8_t trackType);
 
 /**
- * @brief Play a song on noe of the system-wide MIDI players, with a callback once the song finishes
+ * @brief Play a song on one of the system-wide MIDI players, with a callback once the song finishes
  *
  * @param song A pointer to the song to play
  * @param trackType The player to use, either MIDI_SFX or MIDI_BGM
@@ -1146,3 +1158,58 @@ void globalMidiRestore(void* data);
  * @return midiPlayer_t*
  */
 midiPlayer_t* globalMidiPlayerGet(uint8_t trackType);
+
+/**
+ * @brief Return a pointer to the predefined timbre assigned to the given bank and program IDs
+ *
+ * If no timbre is assigned, the default (Acoustic Grand Piano) will be used
+ *
+ * @param percussion True to return the percussion timbre for the bank, otherwise a pitched timbre
+ * @param bank The bank to select the instrument from, from 0 to 127 with 0 being the GM instruments
+ * @param program The program ID within the bank corresponding to the timbre, from 0 to 127
+ * @return const midiTimbre_t* A pointer to the timbre that will be used
+ */
+const midiTimbre_t* getTimbreForProgram(bool percussion, uint8_t bank, uint8_t program);
+
+/**
+ * @brief Play a single note with custom MIDI parameters, without affecting any existing channel settings
+ *
+ * @param player The MIDI player to play the note on
+ * @param chanId The channel ID to used. A channel number greater than 15 may be used, as a sort of tag
+ * @param note The MIDI note to play
+ * @param velocity The note velocity, which controls its volume
+ * @param timbre A reference to the timbre, which defines all instrument parameters. No reference is kept.
+ * @param percussion True to assign the note to a percussion voice, false to use a normal voices
+ * @return const midiVoice_t* A reference to the voice allocated to this sound, which can be used to turn it off
+ */
+const midiVoice_t* soundNoteOn(midiPlayer_t* player, uint8_t chanId, uint8_t note, uint8_t velocity,
+                               const midiTimbre_t* timbre, bool percussion);
+
+/**
+ * @brief Stop playing a single note with custom MIDI parameters.
+ *
+ * @warning Where possible, using soundVoiceRelease() or soundVoiceOff() is recommended instead for efficiency.
+ *
+ * @param player The MIDI player to stop the note playing on
+ * @param chanId The channel ID passed to soundNoteOn(). A channel number greater than 15 may be used
+ * @param note The MIDI note to stop playing
+ * @param velocity The note off velocity, which is not used but could affect release speed
+ * @param percussion True to stop a note played with percussion voices, false to stop a note played with normal voices
+ */
+void soundNoteOff(midiPlayer_t* player, uint8_t chanId, uint8_t note, uint8_t velocity, bool percussion);
+
+/**
+ * @brief Transition the given voice into the 'release' state, equivalent to a MIDI Note Off
+ *
+ * @param player The MIDI player that owns the voice
+ * @param voice
+ */
+void soundVoiceRelease(midiPlayer_t* player, const midiVoice_t* voice);
+
+/**
+ * @brief Immediately stop a single voice from playing, disregarding all ADSR parameters
+ *
+ * @param player The MIDI player that owns the voice
+ * @param voice  The voice returned by soundNoteOn()
+ */
+void soundVoiceOff(midiPlayer_t* player, const midiVoice_t* voice);
