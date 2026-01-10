@@ -65,6 +65,7 @@
                 "C:/Users/chris/esp/Super-2024-Swadge-FW/emulator/**",
                 "C:/Users/chris/esp/esp-idf/components/heap/include/**"
             ],
+            "configurationProvider": "ms-vscode.cmake-tools",
             "browse": {
                 "path": [
                     "${config:idf.espIdfPath}/components",

@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <esp_log.h>
 #include <esp_timer.h>
+#include "cnfs.h"
 
 #define MAXSHAPELINE 64
 
@@ -15,6 +16,7 @@ const char visualizerModeName[] = "Visualizer";
 static void visualizerEnterMode(void);
 static void visualizerExitMode(void);
 static void visualizerMainLoop(int64_t elapsedUs);
+bool loadShapesFile(cnfsFileIdx_t fileIdx);
  
 swadgeMode_t visualizerMode = {
     .modeName                 = visualizerModeName,
@@ -50,6 +52,18 @@ vec3_t vecFlipY;
 int64_t numIters = 0;
 vec3_t rotEuler;
 
+cnfsFileIdx_t logo;
+size_t logoIdx = 0;
+
+static const cnfsFileIdx_t logos[] = {
+    VIZ_VECTOR_U_BIN,
+    VIZ_DANCH_BIN,
+    VIZ_THEO_BIN,
+    VIZ_P_2_BIN
+};
+
+static size_t numLogos = 4;
+
 int allocCurve(curve3_t **array, size_t *count)
 // Allocates memory for a new curve3_t to be added, attempting realloc with a tmp pointer first
 {   
@@ -65,15 +79,41 @@ int allocCurve(curve3_t **array, size_t *count)
     return 1;
 }
 
-static void visualizerEnterMode()
+static char* mem_fgets(char* dst, int max, const char** src)
 {
-    // Start sampling mic when mode is opened
-    startMic();
+    // null terminator at end of file
+    if (**src == '\0')
+        return NULL;
+
+    int i = 0;
+    while (i < max - 1 && **src && **src != '\n')
+    {
+        dst[i++] = *(*src)++;
+    }
+
+    if (**src == '\n')
+        (*src)++;
+
+    // Add null terminator at end of line
+    dst[i] = '\0';
+    return dst;
+}
+
+bool loadShapesFile(cnfsFileIdx_t fileIdx)
+// Loads a custom shapes file provided the corresponding file index from the enum in cnfs_image.h
+{
+    size_t fileLen;
+    char* fileText = (char*)cnfsReadFile(fileIdx, &fileLen, false);
+    if (!fileText)
+    {
+        return false;
+    }
+
+    char line[MAXSHAPELINE];
+    const char* cursor = fileText;
 
     // Open and parse custom .shapes file
-    FILE *f = fopen("./main/modes/music/visualizer/shapes/vector_u.shapes", "r");
-    char line[MAXSHAPELINE];
-    while(fgets(line, MAXSHAPELINE, f) != NULL)
+    while (mem_fgets(line, MAXSHAPELINE, &cursor) != NULL)
     {   
         // Allocate memory for new curves
         allocCurve(&curves, &countCurves);
@@ -125,7 +165,15 @@ static void visualizerEnterMode()
         countCurves++;
     }
 
-    fclose(f);
+    free(fileText);
+    return true;
+}
+
+static void visualizerEnterMode()
+{   
+    // Load Vector U as default
+    logo = logos[logoIdx];
+    loadShapesFile(logo);
 
     vecOffset = (vec3_t){
         .x = 0,
@@ -166,35 +214,65 @@ static void visualizerEnterMode()
 static void visualizerExitMode()
 {   
     // Clean up 
-    stopMic();
     heap_caps_free(curves);
+    curves = NULL;
 }
  
 static void visualizerMainLoop(int64_t elapsedUs)
 {
+    // For joystick: 0 = right, 320 = up, 640 = left, 960 = down
     buttonEvt_t evt;
+
+    int32_t phi, r, intensity, joystickAngle;
+    if (getTouchJoystick(&phi, &r, &intensity)) {
+        joystickAngle = phi - 90;
+        if (joystickAngle < 0) {
+            joystickAngle += 360;
+        }
+        joystickAngle -= 360;
+        joystickAngle *= -1;
+        rotEuler.z = joystickAngle;
+    }
+
     while (checkButtonQueueWrapper(&evt))
-    {
+    {   
         if (evt.down)
         {
             if (evt.button & PB_UP)
             {
-                rotEuler.x += 2;
+                rotEuler.x += 4;
             } else if (evt.button & PB_DOWN)
             {
-                rotEuler.x -= 2;
+                rotEuler.x -= 4;            
             } else if (evt.button & PB_LEFT)
             {
-                rotEuler.y += 2;
+                rotEuler.z -= 4;
             } else if (evt.button & PB_RIGHT)
             {
-                rotEuler.y -= 2;
+                rotEuler.z += 4;
             } else if (evt.button & PB_A)
             {
-                rotEuler.z += 2;
+                heap_caps_free(curves);
+                countCurves = 0;
+                curves = NULL;
+                logoIdx++;
+                if (logoIdx >= numLogos) {
+                    logoIdx = 0;
+                }
+                logo = logos[logoIdx];
+                loadShapesFile(logo);
             } else if (evt.button & PB_B)
             {
-                rotEuler.z -= 2;
+                heap_caps_free(curves);
+                countCurves = 0;
+                curves = NULL;
+                if (logoIdx == 0) {
+                    logoIdx = numLogos - 1;
+                } else {
+                    logoIdx--;
+                }
+                logo = logos[logoIdx];
+                loadShapesFile(logo);
             }
         }
     }
