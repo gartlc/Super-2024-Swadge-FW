@@ -3,11 +3,31 @@
 #include "mat3.h"
 #include "curve3.h"
 #include <stdlib.h>
+#include <stdbool.h>
 #include <esp_log.h>
 #include <esp_timer.h>
 #include "cnfs.h"
+#include "hdw-imu.h"
 
 #define MAXSHAPELINE 64
+#define ROTSPEEDMAX 10
+#define ROTSPEEDMIN -10
+
+#include <stdint.h>
+#define Q10_SCALE 1024
+#define Q10_MAX 2047
+#define Q10_MIN -2048
+
+// Convert from float to Q1.10 fixed point (for working with quaternions)
+static inline int16_t float_to_q1_10(float x)
+{
+    int32_t q = (int32_t)(x * Q10_SCALE + (x >= 0 ? 0.5f : -0.5f));
+
+    if (q > Q10_MAX) q = Q10_MAX;
+    if (q < Q10_MIN) q = Q10_MIN;
+
+    return (int16_t)q;
+}
 
 // Mode-specific function declarations
 void visualizerAudioCallback(uint16_t* samples, uint32_t sampleCnt);
@@ -22,7 +42,7 @@ swadgeMode_t visualizerMode = {
     .modeName                 = visualizerModeName,
     .wifiMode                 = NO_WIFI,
     .overrideUsb              = false,
-    .usesAccelerometer        = false,
+    .usesAccelerometer        = true,
     .usesThermometer          = false,
     .overrideSelectBtn        = false,
     .fnEnterMode              = visualizerEnterMode,
@@ -50,11 +70,15 @@ vec3q_t vecOffsetCenterFixed;
 vec3_t vecFlipY;
 
 int64_t numIters = 0;
+int16_t rotSpeed = 3;
 vec3_t rotEuler;
 
 cnfsFileIdx_t logo;
 size_t logoIdx = 0;
 
+bool accelEnabled = true;
+
+// These enum members are auto-generated at compile time *before* this file is compiled
 static const cnfsFileIdx_t logos[] = {
     VIZ_VECTOR_U_BIN,
     VIZ_DANCH_BIN,
@@ -113,6 +137,7 @@ bool loadShapesFile(cnfsFileIdx_t fileIdx)
     const char* cursor = fileText;
 
     // Open and parse custom .shapes file
+    // TODO: Do an initial malloc with heap_caps_malloc() instead of only realloc
     while (mem_fgets(line, MAXSHAPELINE, &cursor) != NULL)
     {   
         // Allocate memory for new curves
@@ -178,10 +203,11 @@ static void visualizerEnterMode()
     vecOffset = (vec3_t){
         .x = 0,
         .y = 0,
-        .z = -100
+        .z = -100 // Translate 100 units away from camera (depth)
     };
     vecOffsetFixed = vec3_toFixed(vecOffset, 4);
 
+    // Translates scene origin to the center of the screen
     vecOffsetCenter = (vec3_t){
         .x = TFT_WIDTH/2,
         .y = TFT_HEIGHT/2,
@@ -217,12 +243,10 @@ static void visualizerExitMode()
     heap_caps_free(curves);
     curves = NULL;
 }
- 
+
 static void visualizerMainLoop(int64_t elapsedUs)
 {
-    // For joystick: 0 = right, 320 = up, 640 = left, 960 = down
-    buttonEvt_t evt;
-
+    // Use joystick input to drive out-of-plane rotation
     int32_t phi, r, intensity, joystickAngle;
     if (getTouchJoystick(&phi, &r, &intensity)) {
         joystickAngle = phi - 90;
@@ -234,22 +258,27 @@ static void visualizerMainLoop(int64_t elapsedUs)
         rotEuler.z = joystickAngle;
     }
 
+    // Use d-pad to change other angles
+    // Use AB buttons to cycle logos
+    buttonEvt_t evt;
     while (checkButtonQueueWrapper(&evt))
     {   
         if (evt.down)
         {
             if (evt.button & PB_UP)
             {
-                rotEuler.x += 4;
+                rotSpeed += 1;
             } else if (evt.button & PB_DOWN)
             {
-                rotEuler.x -= 4;            
+                rotSpeed -= 1;            
             } else if (evt.button & PB_LEFT)
             {
-                rotEuler.z -= 4;
+                accelEnabled = false;
+                rotEuler.z = 0;
             } else if (evt.button & PB_RIGHT)
             {
-                rotEuler.z += 4;
+                accelEnabled = true;
+                rotEuler.z = 0;
             } else if (evt.button & PB_A)
             {
                 heap_caps_free(curves);
@@ -277,12 +306,51 @@ static void visualizerMainLoop(int64_t elapsedUs)
         }
     }
 
-    // rotEuler.x += 1;
-    rotEuler.y -= 3;
-    // rotEuler.z += 3;
+    if (rotSpeed < ROTSPEEDMIN) {
+        rotSpeed = ROTSPEEDMIN;
+    } else if (rotSpeed > ROTSPEEDMAX) {
+        rotSpeed = ROTSPEEDMAX;
+    }
+    rotEuler.y -= rotSpeed;
 
     rotEuler = vec3_validateEuler(rotEuler);
     mat3_t rotMat = mat3_fromEuler(rotEuler);
+
+    if (accelEnabled) {
+        // Sample accelerometer
+        int16_t a_x, a_y, a_z;
+        accelIntegrate();
+        if (ESP_OK != accelGetOrientVec(&a_x, &a_y, &a_z))
+        {
+            a_x = 0;
+            a_y = 0;
+            a_z = 0;
+        }
+        
+        // Get X/Y/Z axes in world space
+        float plusx_out[3] = {1, 0, 0};
+        float plusy_out[3] = {0, 1, 0};
+        float plusz_out[3] = {0, 0, 1};
+
+        // TODO: Check handedness of accelerometer coordinate frame vs our asssumed frame
+        mathRotateVectorByQuaternion(plusy_out, LSM6DSL.fqQuat, plusy_out);
+        mathRotateVectorByQuaternion(plusx_out, LSM6DSL.fqQuat, plusx_out);
+        mathRotateVectorByQuaternion(plusz_out, LSM6DSL.fqQuat, plusz_out);
+
+        // Manually construct rotation matrix from world-space vectors
+        rotMat = mat3_identity();
+        rotMat.m[0][0] = float_to_q1_10(plusx_out[0]);
+        rotMat.m[1][0] = float_to_q1_10(plusx_out[1]);
+        rotMat.m[2][0] = float_to_q1_10(plusx_out[2]);
+
+        rotMat.m[0][1] = float_to_q1_10(plusy_out[0]);
+        rotMat.m[1][1] = float_to_q1_10(plusy_out[1]);
+        rotMat.m[2][1] = float_to_q1_10(plusy_out[2]);
+
+        rotMat.m[0][2] = float_to_q1_10(plusz_out[0]);
+        rotMat.m[1][2] = float_to_q1_10(plusz_out[1]);
+        rotMat.m[2][2] = float_to_q1_10(plusz_out[2]);
+    }
 
     // Store transformed points in vT
     vec3_t vT[4];
@@ -292,6 +360,7 @@ static void visualizerMainLoop(int64_t elapsedUs)
     for (size_t i = 0; i < countCurves; i++) 
     {
         curve3_t curve = curves[i];
+        // Apply xform to all curve points
         for (int j = 0; j < curve.num_points; j++) 
         {
             vec3_t vec = curve.points[j];
@@ -302,6 +371,7 @@ static void visualizerMainLoop(int64_t elapsedUs)
             vecFixed = vec3q_add(vecFixed, vecOffsetCenterFixed);
 
             // vecFixed = vec3q_add(vecFixed, vecOffsetFixed);
+            // TODO: This is old code that projects a vector to the image plane using an intrinsic 3x3 matrix
             // vecFixed = mat3q_projectVec(camKFixed, vecFixed);
 
             vT[j] = vec3q_fromFixed(vecFixed, 4); // Convert to int just before drawing
